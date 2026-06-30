@@ -3,5 +3,13 @@
 from .pseudo_gradient import PseudoJacobianEstimator
 from .cfdl import CFDLModel
 from .mfac import CFDLMFAC
+from .confidence import ConfidenceEstimator
+from .supervisor import HybridSupervisor
 
-__all__ = ["PseudoJacobianEstimator", "CFDLModel", "CFDLMFAC"]
+__all__ = [
+    "PseudoJacobianEstimator",
+    "CFDLModel",
+    "CFDLMFAC",
+    "ConfidenceEstimator",
+    "HybridSupervisor",
+]
