@@ -38,7 +38,8 @@ def test_mfac_tracks_constant_setpoint_stable_plant():
 
     a = np.diag([0.7, 0.6, 0.8])
     b = np.diag([0.4, 0.25, 0.6])
-    ctrl = CFDLMFAC(3, 3, MFACConfig(rho=0.6, lam=0.5, eta=1.0, mu=1.0, u_limit=2.0))
+    ctrl = CFDLMFAC(3, 3, MFACConfig(rho=0.6, lam=0.5, eta=1.0, mu=1.0,
+                                     phi_init=1.0, u_limit=2.0))
     y = np.zeros(3)
     y_ref = np.array([1.0, -0.5, 0.8])
     for _ in range(800):
@@ -52,7 +53,7 @@ def test_mfac_tracks_stable_linear_plant():
 
     A = np.array([[0.8, 0.05], [-0.04, 0.85]])
     B = np.array([[0.5, 0.0], [0.1, 0.4]])
-    ctrl = CFDLMFAC(2, 2, MFACConfig(rho=0.5, lam=1.0, u_limit=3.0))
+    ctrl = CFDLMFAC(2, 2, MFACConfig(rho=0.5, lam=1.0, phi_init=1.0, u_limit=3.0))
     y = np.zeros(2)
     y_ref = np.array([0.6, -0.3])
     errs = []
@@ -67,7 +68,7 @@ def test_mfac_tracks_stable_linear_plant():
 def test_mfac_error_is_monotone_on_average():
     a = np.diag([0.7, 0.7])
     b = np.diag([0.5, 0.5])
-    ctrl = CFDLMFAC(2, 2, MFACConfig(rho=0.5, lam=1.0))
+    ctrl = CFDLMFAC(2, 2, MFACConfig(rho=0.5, lam=1.0, phi_init=1.0))
     y = np.zeros(2)
     y_ref = np.ones(2)
     errs = []

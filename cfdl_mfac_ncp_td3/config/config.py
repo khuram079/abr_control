@@ -60,15 +60,20 @@ class ThrusterConfig:
 
 @dataclass
 class MFACConfig:
-    """Compact-Form Dynamic Linearization MFAC hyper-parameters."""
+    """Compact-Form Dynamic Linearization MFAC hyper-parameters.
+
+    Defaults are tuned for the AUV inner *velocity* loop, whose per-step gain
+    ``d(nu)/d(tau)`` is small (~1e-3); hence the small ``phi_init`` and ``lam``.
+    The Stage-2 unit tests pass their own explicit configs for generic plants.
+    """
 
     eta: float = 1.0  # PJM estimation step size
     mu: float = 1.0  # PJM estimation penalty
-    rho: float = 0.8  # control-law step size
-    lam: float = 1.0  # control-law penalty (lambda)
-    epsilon: float = 1e-5  # reset threshold
-    phi_init: float = 1.0  # initial diagonal of the pseudo-Jacobian
-    u_limit: float = 1.0  # per-channel |Δu| clip (normalised)
+    rho: float = 1.0  # control-law step size
+    lam: float = 5e-4  # control-law penalty (lambda)
+    epsilon: float = 1e-7  # reset threshold
+    phi_init: float = 5e-3  # initial diagonal of the pseudo-Jacobian
+    u_limit: float = 12.0  # per-channel |Δtau| clip [N or N*m]
 
 
 @dataclass

@@ -5,6 +5,7 @@ from .cfdl import CFDLModel
 from .mfac import CFDLMFAC
 from .confidence import ConfidenceEstimator
 from .supervisor import HybridSupervisor
+from .hybrid_controller import HybridController
 
 __all__ = [
     "PseudoJacobianEstimator",
@@ -12,4 +13,5 @@ __all__ = [
     "CFDLMFAC",
     "ConfidenceEstimator",
     "HybridSupervisor",
+    "HybridController",
 ]
