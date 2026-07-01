@@ -51,6 +51,36 @@ class HybridSupervisor:
         self.confidence.reset()
         self._ncp_state = None
         self.last_alpha = self.cfg.blend_floor
+        # Competence-gate state.
+        self.trust = self.cfg.trust_init
+        self._err_ema = None
+        self._prev_alpha = 0.0
+
+    # ------------------------------------------------------------------ #
+    def _update_trust(self, error_norm: float) -> None:
+        """Online RL-competence estimate (see :class:`SupervisorConfig`).
+
+        Rewards trust when the tracking error keeps falling while the RL branch
+        held meaningful authority last step, and punishes it when the error
+        grows under RL authority.  Bootstrapped skeptically so an unproven
+        policy starts with limited authority.
+        """
+
+        if self._err_ema is None:
+            self._err_ema = error_norm
+            return
+        improving = error_norm < self._err_ema
+        if self._prev_alpha > self.cfg.trust_active_thresh:
+            if improving:
+                self.trust += self.cfg.trust_rate * (1.0 - self.trust)
+            else:
+                # Scale the penalty by how much authority RL actually held.
+                self.trust -= self.cfg.trust_rate * self.trust * min(
+                    1.0, 2.0 * self._prev_alpha
+                )
+        self.trust = float(np.clip(self.trust, 0.0, 1.0))
+        beta = self.cfg.trust_ema_beta
+        self._err_ema = (1.0 - beta) * self._err_ema + beta * error_norm
 
     # ------------------------------------------------------------------ #
     def _features(self, error, d_hat, theta, u_mfac, u_rl, conf) -> np.ndarray:
@@ -93,10 +123,25 @@ class HybridSupervisor:
 
         u_mfac = np.asarray(u_mfac, dtype=float).ravel()
         u_rl = np.asarray(u_rl, dtype=float).ravel()
-        alpha = self.authority(error, d_hat, theta, u_mfac, u_rl, dt)
+        alpha_distress = self.authority(error, d_hat, theta, u_mfac, u_rl, dt)
+
+        # Competence gate: scale distress-based authority by earned trust so an
+        # unhelpful RL policy cannot drag the hybrid below pure MFAC.
+        trust = 1.0
+        if self.cfg.competence_gating:
+            err_norm = float(np.linalg.norm(np.asarray(error, dtype=float)))
+            self._update_trust(err_norm)
+            trust = self.trust
+        alpha = float(np.clip(alpha_distress * trust, self.cfg.blend_floor,
+                              self.cfg.blend_ceiling))
+        self._prev_alpha = alpha
+        self.last_alpha = alpha
+
         u = (1.0 - alpha) * u_mfac + alpha * u_rl
         info = {
             "alpha": alpha,
+            "alpha_distress": alpha_distress,
+            "trust": trust,
             "confidence": self.confidence.confidence,
             "u_mfac": u_mfac,
             "u_rl": u_rl,

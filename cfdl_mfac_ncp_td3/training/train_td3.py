@@ -19,14 +19,21 @@ from ..rl import TD3
 def train_td3(total_steps: int = 50_000, trajectory: str = "sinusoidal",
               config: ExperimentConfig | None = None, fault_prob: float = 0.1,
               curriculum: bool = True, eval_every: int = 5000,
+              max_episodes: int | None = None, eval_every_episodes: int | None = None,
               seed: int = 0, verbose: bool = True) -> dict:
     """Train a TD3 agent on the AUV environment.
 
-    Returns a dict with the trained ``agent`` and the training history.
+    Training runs until ``total_steps`` environment steps, or until
+    ``max_episodes`` completed episodes if that is given (episode-budget mode,
+    with the curriculum annealed over episodes).  Returns a dict with the
+    trained ``agent`` and the training history.
     """
 
     cfg = config or default_config()
     rng = np.random.default_rng(seed)
+    episode_budget = max_episodes is not None
+    if episode_budget:
+        total_steps = 10 ** 12  # effectively unbounded; episodes terminate it
     env = AUVEnv(cfg, trajectory=trajectory, difficulty=0.1 if curriculum else 0.6,
                  randomize=True, fault_prob=fault_prob, seed=seed)
     agent = TD3(env.obs_dim, env.act_dim, max_action=1.0, config=cfg.td3)
@@ -55,19 +62,31 @@ def train_td3(total_steps: int = 50_000, trajectory: str = "sinusoidal",
             history["episode_return"].append(ep_ret)
             ep_idx += 1
             if curriculum:
-                # Linearly ramp difficulty across the run.
-                env.set_difficulty(min(1.0, 0.1 + 0.9 * step / total_steps))
+                # Anneal difficulty over the training budget (episodes or steps).
+                frac = ep_idx / max_episodes if episode_budget else step / total_steps
+                env.set_difficulty(min(1.0, 0.1 + 0.9 * frac))
+
+            if eval_every_episodes and ep_idx % eval_every_episodes == 0:
+                er = evaluate_policy(agent, cfg, trajectory, n=3)
+                history["eval_return"].append((step, er))
+                if verbose:
+                    print(f"[train] episode {ep_idx:>5d}  step {step:>8d}  "
+                          f"eval_return {er:10.2f}", flush=True)
+
+            if episode_budget and ep_idx >= max_episodes:
+                break
             obs, _ = env.reset()
             ep_ret, ep_len = 0.0, 0
 
-        if eval_every and step % eval_every == 0:
+        if eval_every and not episode_budget and step % eval_every == 0:
             er = evaluate_policy(agent, cfg, trajectory, n=3)
             history["eval_return"].append((step, er))
             if verbose:
                 print(f"[train] step {step:>7d}  eval_return {er:8.2f}  "
-                      f"episodes {ep_idx}")
+                      f"episodes {ep_idx}", flush=True)
 
-    return {"agent": agent, "history": history, "env": env}
+    return {"agent": agent, "history": history, "env": env, "episodes": ep_idx,
+            "steps": step}
 
 
 def evaluate_policy(agent: TD3, config: ExperimentConfig, trajectory: str,

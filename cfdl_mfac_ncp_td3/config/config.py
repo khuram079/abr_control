@@ -139,6 +139,21 @@ class SupervisorConfig:
     use_ncp: bool = True  # gate the blend through the NCP supervisor
     smoothing: float = 0.1  # low-pass on the blending coefficient
 
+    # --- competence-aware trust gate ---------------------------------- #
+    # RL authority is granted by MFAC *distress* only; without a check on
+    # whether the learned policy is actually helping, a bad policy would be
+    # trusted (and can degrade tracking below pure MFAC).  The trust gate
+    # scales authority by an online estimate of the RL policy's competence:
+    # trust rises while RL holds authority and the error keeps falling, and
+    # falls when the error grows under RL authority.  Final authority is
+    # ``alpha = alpha_distress * trust``, so an unhelpful policy loses
+    # authority and the hybrid gracefully falls back to MFAC.
+    competence_gating: bool = True
+    trust_init: float = 0.5  # initial (skeptical) RL trust
+    trust_rate: float = 0.03  # trust adaptation rate per step
+    trust_ema_beta: float = 0.05  # error EMA smoothing for the trend test
+    trust_active_thresh: float = 0.15  # alpha above which RL is "responsible"
+
 
 @dataclass
 class ExperimentConfig:

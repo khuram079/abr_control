@@ -72,7 +72,9 @@ def test_fusion_is_convex_combination():
 
 
 def test_fusion_prefers_mfac_when_nominal_and_rl_when_degraded():
-    sup = HybridSupervisor(SupervisorConfig(use_ncp=False, smoothing=0.4))
+    # Pure distress-based allocation (competence gate validated separately).
+    sup = HybridSupervisor(SupervisorConfig(use_ncp=False, smoothing=0.4,
+                                            competence_gating=False))
     u_mfac = np.ones(6)
     u_rl = -np.ones(6)
     # Nominal: result close to MFAC.
@@ -85,6 +87,35 @@ def test_fusion_prefers_mfac_when_nominal_and_rl_when_degraded():
                                    theta=np.full(6, 0.1))
     assert info_nom["alpha"] < info_deg["alpha"]
     assert np.linalg.norm(u_nom - u_mfac) < np.linalg.norm(u_deg - u_mfac)
+
+
+def test_competence_gate_suppresses_harmful_rl():
+    """If error keeps growing while RL holds authority, trust -> low -> alpha -> low."""
+
+    sup = HybridSupervisor(SupervisorConfig(use_ncp=False, competence_gating=True,
+                                            trust_init=0.5, trust_rate=0.1,
+                                            smoothing=1.0))
+    # Sustained large error (distress high) with a worsening trend each step.
+    err = 1.0
+    last = None
+    for _ in range(200):
+        _, last = sup.fuse(np.ones(6), -np.ones(6), error=np.full(6, err))
+        err += 0.02  # error grows -> RL is (implicitly) not helping
+    assert sup.trust < 0.2, f"trust should collapse, got {sup.trust:.3f}"
+    assert last["alpha"] < 0.25, f"authority should be suppressed, got {last['alpha']:.3f}"
+
+
+def test_competence_gate_grants_authority_to_helpful_rl():
+    """If error keeps falling while RL holds authority, trust -> high."""
+
+    sup = HybridSupervisor(SupervisorConfig(use_ncp=False, competence_gating=True,
+                                            trust_init=0.5, trust_rate=0.1,
+                                            smoothing=1.0))
+    err = 3.0
+    for _ in range(200):
+        _, last = sup.fuse(np.ones(6), -np.ones(6), error=np.full(6, err))
+        err = max(0.05, err - 0.02)  # error steadily improves
+    assert sup.trust > 0.85, f"trust should grow, got {sup.trust:.3f}"
 
 
 def test_ncp_gated_supervisor_runs_and_is_bounded():
