@@ -46,14 +46,18 @@ def paired_ttest(a: np.ndarray, b: np.ndarray) -> dict:
     """Paired t-test between two metric vectors (same trials)."""
 
     a, b = np.asarray(a, float), np.asarray(b, float)
+    diff = a - b
+    # Degenerate case: identical samples (e.g. an ablation variant that
+    # reduces to the reference) -> no difference, well-defined result.
+    if np.allclose(diff, 0.0):
+        return {"t": 0.0, "p": 1.0, "cohens_d": 0.0, "mean_diff": 0.0}
     if _HAS_SCIPY:
         t, p = _stats.ttest_rel(a, b)
     else:  # pragma: no cover
-        diff = a - b
         t = np.mean(diff) / (np.std(diff, ddof=1) / np.sqrt(len(diff)))
         p = float("nan")
     return {"t": float(t), "p": float(p), "cohens_d": cohens_d(a, b),
-            "mean_diff": float(np.mean(a - b))}
+            "mean_diff": float(np.mean(diff))}
 
 
 def wilcoxon(a: np.ndarray, b: np.ndarray) -> dict:
@@ -62,9 +66,11 @@ def wilcoxon(a: np.ndarray, b: np.ndarray) -> dict:
     a, b = np.asarray(a, float), np.asarray(b, float)
     if not _HAS_SCIPY:  # pragma: no cover
         return {"stat": float("nan"), "p": float("nan")}
+    if np.allclose(a - b, 0.0):  # identical samples -> no difference
+        return {"stat": 0.0, "p": 1.0}
     try:
         stat, p = _stats.wilcoxon(a, b)
-    except ValueError:  # e.g. all differences zero
+    except ValueError:  # e.g. zero-only differences after filtering
         return {"stat": 0.0, "p": 1.0}
     return {"stat": float(stat), "p": float(p)}
 

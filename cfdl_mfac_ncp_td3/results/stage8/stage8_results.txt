@@ -1,0 +1,33 @@
+
+====================================================================
+STAGE 8  |  Integrated hybrid controller, comparison & ablation
+====================================================================
+(a) Hybrid on helix (with current): rmse=0.8797, pos-rmse=0.8064, diverged=False
+    -> artifacts: hybrid_helix_3d.png, hybrid_helix_errors.png
+
+(b) Head-to-head on sinusoidal (with current), RMSE:
+    Backstepping   rmse=0.4411
+    SMC            rmse=0.6806
+    Hybrid         rmse=1.3498
+    PID            rmse=1.3578
+    MPC            rmse=1.8227
+
+(c) Monte-Carlo ablation + benchmarks (12 randomized trials, fault_prob=0.3), RMSE mean +/- std:
+  MFAC             rmse=0.9769 +/- 0.0403
+  MFAC+Obs         rmse=0.9769 +/- 0.0403
+  Hybrid (no RL)   rmse=0.9769 +/- 0.0403
+  Hybrid           rmse=0.9769 +/- 0.0403
+  PID              rmse=0.6838 +/- 0.0213
+  SMC              rmse=0.6662 +/- 0.0274
+  Backstepping     rmse=0.7982 +/- 0.0616
+  MPC              rmse=0.9475 +/- 0.1826
+    -> artifact: ablation_rmse.png
+
+    Pairwise significance vs Hybrid (no RL):
+      vs MFAC             d=+0.00 p=1  (n.s.)
+      vs MFAC+Obs         d=+0.00 p=1  (n.s.)
+      vs Hybrid           d=+0.00 p=1  (n.s.)
+      vs PID              d=+8.70 p=4.52e-14  (significant)
+      vs SMC              d=+8.63 p=1.32e-14  (significant)
+      vs Backstepping     d=+3.29 p=4.33e-07  (significant)
+      vs MPC              d=+0.21 p=0.577  (n.s.)

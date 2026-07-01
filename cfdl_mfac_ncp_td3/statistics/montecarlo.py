@@ -47,15 +47,21 @@ def monte_carlo(controller_factory, n_trials: int = 30,
     # Aggregate metric distributions.
     keys = [k for k in records[0] if isinstance(records[0][k], (int, float))]
     dist = {k: np.array([r[k] for r in records], dtype=float) for k in keys}
-    summary = {
-        k: {
+
+    def _agg(v: np.ndarray) -> dict:
+        # A metric may be all-NaN (e.g. settling_time when never held); report
+        # NaNs without triggering numpy's empty-slice warnings.
+        if not np.any(np.isfinite(v)):
+            nan = float("nan")
+            return {"mean": nan, "std": nan, "median": nan, "min": nan, "max": nan}
+        return {
             "mean": float(np.nanmean(v)),
             "std": float(np.nanstd(v)),
             "median": float(np.nanmedian(v)),
             "min": float(np.nanmin(v)),
             "max": float(np.nanmax(v)),
         }
-        for k, v in dist.items()
-    }
+
+    summary = {k: _agg(v) for k, v in dist.items()}
     return {"records": records, "distributions": dist, "summary": summary,
             "n_trials": n_trials}
