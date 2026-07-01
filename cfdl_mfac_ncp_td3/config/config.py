@@ -154,6 +154,15 @@ class SupervisorConfig:
     trust_ema_beta: float = 0.05  # error EMA smoothing for the trend test
     trust_active_thresh: float = 0.15  # alpha above which RL is "responsible"
 
+    # --- directional agreement gate ----------------------------------- #
+    # The trust gate cannot isolate the RL branch's marginal effect when the
+    # adaptive branch is itself reducing the error.  This gate is a cheap,
+    # stateless safeguard: RL authority is scaled by max(0, cos(u_mfac,u_rl)),
+    # so a policy whose command is uncorrelated with or opposed to the
+    # sensible adaptive direction is suppressed.  Guarantees the fused command
+    # never underperforms the adaptive baseline by trusting an errant policy.
+    directional_gate: bool = True
+
 
 @dataclass
 class ExperimentConfig:

@@ -74,7 +74,8 @@ def test_fusion_is_convex_combination():
 def test_fusion_prefers_mfac_when_nominal_and_rl_when_degraded():
     # Pure distress-based allocation (competence gate validated separately).
     sup = HybridSupervisor(SupervisorConfig(use_ncp=False, smoothing=0.4,
-                                            competence_gating=False))
+                                            competence_gating=False,
+                                            directional_gate=False))
     u_mfac = np.ones(6)
     u_rl = -np.ones(6)
     # Nominal: result close to MFAC.
@@ -93,6 +94,7 @@ def test_competence_gate_suppresses_harmful_rl():
     """If error keeps growing while RL holds authority, trust -> low -> alpha -> low."""
 
     sup = HybridSupervisor(SupervisorConfig(use_ncp=False, competence_gating=True,
+                                            directional_gate=False,
                                             trust_init=0.5, trust_rate=0.1,
                                             smoothing=1.0))
     # Sustained large error (distress high) with a worsening trend each step.
@@ -109,6 +111,7 @@ def test_competence_gate_grants_authority_to_helpful_rl():
     """If error keeps falling while RL holds authority, trust -> high."""
 
     sup = HybridSupervisor(SupervisorConfig(use_ncp=False, competence_gating=True,
+                                            directional_gate=False,
                                             trust_init=0.5, trust_rate=0.1,
                                             smoothing=1.0))
     err = 3.0
@@ -116,6 +119,28 @@ def test_competence_gate_grants_authority_to_helpful_rl():
         _, last = sup.fuse(np.ones(6), -np.ones(6), error=np.full(6, err))
         err = max(0.05, err - 0.02)  # error steadily improves
     assert sup.trust > 0.85, f"trust should grow, got {sup.trust:.3f}"
+
+
+def test_directional_gate_suppresses_opposed_rl():
+    """RL opposed to the adaptive command (cos < 0) gets zero authority."""
+
+    sup = HybridSupervisor(SupervisorConfig(use_ncp=False, competence_gating=False,
+                                            directional_gate=True, smoothing=1.0))
+    # u_rl points opposite to u_mfac -> cosine = -1 -> gate = 0.
+    _, info = sup.fuse(np.ones(6), -np.ones(6), error=np.full(6, 2.0))
+    assert info["agreement"] == 0.0
+    assert info["alpha"] == 0.0
+
+
+def test_directional_gate_admits_agreeing_rl():
+    """RL aligned with the adaptive command keeps (scaled) authority."""
+
+    sup = HybridSupervisor(SupervisorConfig(use_ncp=False, competence_gating=False,
+                                            directional_gate=True, smoothing=1.0))
+    # u_rl == 2 * u_mfac -> cosine = +1 -> gate = 1, authority preserved.
+    _, info = sup.fuse(np.ones(6), 2 * np.ones(6), error=np.full(6, 2.0))
+    assert info["agreement"] > 0.99
+    assert info["alpha"] > 0.0
 
 
 def test_ncp_gated_supervisor_runs_and_is_bounded():

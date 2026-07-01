@@ -134,6 +134,16 @@ class HybridSupervisor:
             trust = self.trust
         alpha = float(np.clip(alpha_distress * trust, self.cfg.blend_floor,
                               self.cfg.blend_ceiling))
+
+        # Directional agreement gate: suppress RL authority when its command is
+        # uncorrelated with / opposed to the adaptive command's direction.
+        gate = 1.0
+        if self.cfg.directional_gate:
+            nm = np.linalg.norm(u_mfac) * np.linalg.norm(u_rl)
+            cos = float(u_mfac @ u_rl / nm) if nm > 1e-9 else 0.0
+            gate = max(0.0, cos)
+            alpha = alpha * gate
+
         self._prev_alpha = alpha
         self.last_alpha = alpha
 
@@ -142,6 +152,7 @@ class HybridSupervisor:
             "alpha": alpha,
             "alpha_distress": alpha_distress,
             "trust": trust,
+            "agreement": gate,
             "confidence": self.confidence.confidence,
             "u_mfac": u_mfac,
             "u_rl": u_rl,
