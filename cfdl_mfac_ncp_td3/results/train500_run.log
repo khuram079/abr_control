@@ -1,0 +1,76 @@
+
+========================================================================
+STAGE 8a  |  TRAIN HYBRID RL POLICY (CFDL-MFAC-NCP-TD3)
+           episodes=500  trajectory=sinusoidal  fault_prob=0.2
+========================================================================
+[train] episode    20  step    24020  eval_return -158556.27
+[train] episode    40  step    48040  eval_return  -71804.33
+[train] episode    60  step    72060  eval_return  -41455.83
+[train] episode    80  step    96080  eval_return  -28409.20
+[train] episode   100  step   120100  eval_return  -43788.98
+[train] episode   120  step   144120  eval_return  -36717.38
+[train] episode   140  step   168140  eval_return  -25579.96
+[train] episode   160  step   192160  eval_return  -28116.50
+[train] episode   180  step   216180  eval_return  -26038.95
+[train] episode   200  step   240200  eval_return  -11725.17
+[train] episode   220  step   264220  eval_return  -23690.72
+[train] episode   240  step   288240  eval_return  -20829.06
+[train] episode   260  step   312260  eval_return  -16350.40
+[train] episode   280  step   336280  eval_return  -56284.18
+[train] episode   300  step   360300  eval_return  -17938.05
+[train] episode   320  step   384320  eval_return  -29586.57
+[train] episode   340  step   408340  eval_return  -13125.61
+[train] episode   360  step   432360  eval_return   -7548.58
+[train] episode   380  step   456380  eval_return  -12462.75
+[train] episode   400  step   480400  eval_return   -9578.89
+[train] episode   420  step   504420  eval_return   -9521.91
+[train] episode   440  step   528440  eval_return  -10624.20
+[train] episode   460  step   552460  eval_return  -10947.14
+[train] episode   480  step   576480  eval_return   -8783.76
+[train] episode   500  step   600500  eval_return   -6903.60
+Training done: 500 episodes / 600500 steps in 92.6 min (108 steps/s).
+Saved checkpoint + training_curve.png
+
+========================================================================
+STAGE 8b  |  MONTE-CARLO EVALUATION (100 simulations) + ABLATION
+========================================================================
+
+Monte-Carlo (100 randomized trials, current + faults@p=0.2):
+  controller        RMSE mean      std  pos-RMSE     energy
+  MFAC                 1.3030   0.2119    1.2286     211763
+  MFAC+Obs             1.3030   0.2119    1.2286     211763
+  Hybrid (no RL)       1.3030   0.2119    1.2286     211763
+  Hybrid (TD3)         1.2031   0.1720    1.1227     129843
+  TD3 only             3.0077   0.4749    2.6063     137985
+  PID                  1.6063   1.8942    1.5830      51932
+  SMC                  0.5238   0.2401    0.5178      43595
+  Backstepping         0.4123   0.2060    0.2480      52613
+  MPC                  1.7079   0.1920    1.6976      12988
+
+Pairwise significance vs Hybrid (TD3) (Cohen's d, paired-t p):
+  vs MFAC             d=-0.52 p=2.26e-07  (significant)
+  vs MFAC+Obs         d=-0.52 p=2.26e-07  (significant)
+  vs Hybrid (no RL)   d=-0.52 p=2.26e-07  (significant)
+  vs TD3 only         d=-5.03 p=1.58e-59  (significant)
+  vs PID              d=-0.30 p=0.0355  (significant)
+  vs SMC              d=+3.24 p=1.94e-56  (significant)
+  vs Backstepping     d=+4.15 p=8.59e-62  (significant)
+  vs MPC              d=-2.76 p=9.61e-55  (significant)
+
+Pairwise significance vs Hybrid (no RL) (Cohen's d, paired-t p):
+  vs MFAC             d=+0.00 p=1  (n.s.)
+  vs MFAC+Obs         d=+0.00 p=1  (n.s.)
+  vs Hybrid (TD3)     d=+0.52 p=2.26e-07  (significant)
+  vs TD3 only         d=-4.61 p=2.64e-58  (significant)
+  vs PID              d=-0.22 p=0.113  (n.s.)
+  vs SMC              d=+3.42 p=3.22e-70  (significant)
+  vs Backstepping     d=+4.24 p=5.19e-66  (significant)
+  vs MPC              d=-1.99 p=3.8e-44  (significant)
+
+Fault-scenario demo (channel 0 @ 40% effectiveness, current on):
+  Hybrid (TD3)     rmse=1.1058  mean_alpha=0.318
+  Hybrid (no RL)   rmse=0.9327  mean_alpha=0.000
+
+Competence-gate verdict: Hybrid(TD3) 1.203 vs Hybrid(no RL) 1.303 -> RL improves
+
+Artifacts -> /home/user/abr_control/cfdl_mfac_ncp_td3/results/train500/
