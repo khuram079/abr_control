@@ -41,13 +41,19 @@ class HybridController:
 
     def __init__(self, config: ExperimentConfig | None = None,
                  params: REMUSParams | None = None,
-                 td3_agent=None, k_outer=1.5,
+                 td3_agent=None, k_outer=1.5, cfdl_feedforward=2.5,
                  nu_max=(2.0, 2.0, 2.0, 0.8, 0.8, 0.8),
                  use_observers: bool = True, use_supervisor: bool = True,
                  disturbance_feedforward: bool = False):
         self.cfg = config or default_config()
         self.p = params or REMUSParams()
         self.k1 = np.full(6, float(k_outer))
+        # CFDL inverse feed-forward gain.  A model-free anticipatory term that
+        # uses MFAC's *own* learned pseudo-Jacobian Phi to compute the wrench
+        # needed to realise the desired velocity change: tau_ff = g * dnu_d/Phi.
+        # This supplies the anticipation a purely reactive MFAC lacks, sharply
+        # reducing phase lag on moving references (no plant model used).
+        self.cfdl_feedforward = float(cfdl_feedforward)
         # Feasible body-velocity envelope: the outer loop never commands a
         # velocity the (drag-limited) vehicle cannot achieve, which would
         # otherwise saturate the inner loop into a limit cycle.
@@ -85,6 +91,7 @@ class HybridController:
         if self.supervisor is not None:
             self.supervisor.reset()
         self._tau_prev = np.zeros(6)
+        self._nu_d_prev = np.zeros(6)
         self.last_info = {}
 
     # ------------------------------------------------------------------ #
@@ -125,10 +132,19 @@ class HybridController:
         nu_d, z1 = self._outer_loop(eta, nu, eta_d, eta_d_dot)
 
         # Inner CFDL-MFAC loop: a bank of SISO adaptive loops drives each
-        # body-velocity channel nu_i -> nu_d_i with a wrench command.
-        tau_mfac = np.array(
-            [self.mfac[i].control([nu[i]], [nu_d[i]])[0] for i in range(6)]
-        )
+        # body-velocity channel nu_i -> nu_d_i with a wrench command, plus a
+        # model-free CFDL inverse feed-forward that anticipates the moving
+        # velocity reference using the learned per-channel pseudo-Jacobian.
+        tau_mfac = np.zeros(6)
+        dnu_d = nu_d - self._nu_d_prev
+        for i in range(6):
+            u = self.mfac[i].control([nu[i]], [nu_d[i]])[0]
+            if self.cfdl_feedforward:
+                phi = float(self.mfac[i].model.phi[0, 0])
+                if abs(phi) > 1e-4:
+                    u += self.cfdl_feedforward * dnu_d[i] / phi
+            tau_mfac[i] = np.clip(u, -self.tau_max[i], self.tau_max[i])
+        self._nu_d_prev = nu_d
 
         # TD3 policy (optional) and confidence-guided fusion.
         tau_rl = self._rl_action(z1, nu, nu_d, eta_d_dot)

@@ -69,11 +69,11 @@ class MFACConfig:
 
     eta: float = 1.0  # PJM estimation step size
     mu: float = 1.0  # PJM estimation penalty
-    rho: float = 1.0  # control-law step size
-    lam: float = 5e-4  # control-law penalty (lambda)
+    rho: float = 2.0  # control-law step size
+    lam: float = 2e-4  # control-law penalty (lambda)
     epsilon: float = 1e-7  # reset threshold
     phi_init: float = 5e-3  # initial diagonal of the pseudo-Jacobian
-    u_limit: float = 12.0  # per-channel |Δtau| clip [N or N*m]
+    u_limit: float = 25.0  # per-channel |Δtau| clip [N or N*m]
 
 
 @dataclass
