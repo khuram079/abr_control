@@ -53,7 +53,8 @@ def _factories(cfg, tuning):
     hp = tuning["Hybrid"]["best_params"]
 
     def hybrid():
-        return HybridController(cfg, use_observers=True, use_supervisor=False,
+        # observers are unused when the supervisor is off -> keep them off for speed
+        return HybridController(cfg, use_observers=False, use_supervisor=False,
                                 k_outer=hp["k_outer"], cfdl_feedforward=hp["prediction_gain"])
 
     return {
@@ -69,6 +70,7 @@ def _factories(cfg, tuning):
 def run(trials: int, seed: int, tune_budget: int) -> None:
     os.makedirs(RESULTS_DIR, exist_ok=True)
     cfg = default_config()
+    cfg.sim.horizon = 40.0  # 40 s episodes keep the 500-trial campaign tractable
     fcfg = FormationConfig(fault_prob=0.6)
     sim = FormationSimulator(cfg, fcfg, trajectory=TRAJ)
 
@@ -126,7 +128,7 @@ def run(trials: int, seed: int, tune_budget: int) -> None:
     base_pred = fcfg.prediction_gain
     factors = np.array([0.8, 0.9, 1.0, 1.1, 1.2])
     sens = {"factors": factors.tolist()}
-    n_sens_seeds = 30
+    n_sens_seeds = 20
     for pname, base_val in (("recovery_threshold", base_thr), ("prediction_gain", base_pred)):
         fr, rt = [], []
         for fct in factors:
