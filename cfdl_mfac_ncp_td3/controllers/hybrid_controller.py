@@ -82,6 +82,7 @@ class HybridController:
         # regress below the baseline.  Residual mode bypasses the supervisor.
         self.residual_rl = residual_rl
         self.residual_scale = float(residual_scale)
+        self.supports_recovery = True  # threshold-triggered aggressive catch-up
         self.use_supervisor = use_supervisor and not residual_rl
         self.disturbance_feedforward = disturbance_feedforward
         self.dob = DisturbanceObserver(self.p, self.cfg.observer) if use_observers else None

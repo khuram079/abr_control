@@ -5,6 +5,7 @@ from .pid import PIDController
 from .smc import SMCController
 from .backstepping import BacksteppingController
 from .mpc import MPCController
+from .fuzzy import FuzzyController
 
 __all__ = [
     "BaseController",
@@ -13,4 +14,5 @@ __all__ = [
     "SMCController",
     "BacksteppingController",
     "MPCController",
+    "FuzzyController",
 ]
