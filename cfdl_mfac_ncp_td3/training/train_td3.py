@@ -20,13 +20,15 @@ def train_td3(total_steps: int = 50_000, trajectory: str = "sinusoidal",
               config: ExperimentConfig | None = None, fault_prob: float = 0.1,
               curriculum: bool = True, eval_every: int = 5000,
               max_episodes: int | None = None, eval_every_episodes: int | None = None,
-              seed: int = 0, verbose: bool = True) -> dict:
+              make_env=None, seed: int = 0, verbose: bool = True) -> dict:
     """Train a TD3 agent on the AUV environment.
 
     Training runs until ``total_steps`` environment steps, or until
     ``max_episodes`` completed episodes if that is given (episode-budget mode,
-    with the curriculum annealed over episodes).  Returns a dict with the
-    trained ``agent`` and the training history.
+    with the curriculum annealed over episodes).  ``make_env(config, trajectory,
+    difficulty, randomize, fault_prob, seed)`` overrides the environment factory
+    (e.g. the residual-RL env).  Returns a dict with the trained ``agent`` and
+    the training history.
     """
 
     cfg = config or default_config()
@@ -34,8 +36,9 @@ def train_td3(total_steps: int = 50_000, trajectory: str = "sinusoidal",
     episode_budget = max_episodes is not None
     if episode_budget:
         total_steps = 10 ** 12  # effectively unbounded; episodes terminate it
-    env = AUVEnv(cfg, trajectory=trajectory, difficulty=0.1 if curriculum else 0.6,
-                 randomize=True, fault_prob=fault_prob, seed=seed)
+    factory = make_env or (lambda **kw: AUVEnv(**kw))
+    env = factory(config=cfg, trajectory=trajectory, difficulty=0.1 if curriculum else 0.6,
+                  randomize=True, fault_prob=fault_prob, seed=seed)
     agent = TD3(env.obs_dim, env.act_dim, max_action=1.0, config=cfg.td3)
 
     history = {"step": [], "episode_return": [], "eval_return": []}
@@ -79,7 +82,7 @@ def train_td3(total_steps: int = 50_000, trajectory: str = "sinusoidal",
             ep_ret, ep_len = 0.0, 0
 
         if eval_every and not episode_budget and step % eval_every == 0:
-            er = evaluate_policy(agent, cfg, trajectory, n=3)
+            er = evaluate_policy(agent, cfg, trajectory, n=3, make_env=make_env)
             history["eval_return"].append((step, er))
             if verbose:
                 print(f"[train] step {step:>7d}  eval_return {er:8.2f}  "
@@ -90,11 +93,12 @@ def train_td3(total_steps: int = 50_000, trajectory: str = "sinusoidal",
 
 
 def evaluate_policy(agent: TD3, config: ExperimentConfig, trajectory: str,
-                    n: int = 3) -> float:
+                    n: int = 3, make_env=None) -> float:
     """Mean deterministic episode return over ``n`` randomized episodes."""
 
-    env = AUVEnv(config, trajectory=trajectory, difficulty=0.6,
-                 randomize=True, fault_prob=0.0, seed=12345)
+    factory = make_env or (lambda **kw: AUVEnv(**kw))
+    env = factory(config=config, trajectory=trajectory, difficulty=0.6,
+                  randomize=True, fault_prob=0.0, seed=12345)
     rets = []
     for i in range(n):
         obs, _ = env.reset(seed=10_000 + i)

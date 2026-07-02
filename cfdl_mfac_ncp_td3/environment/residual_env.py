@@ -1,0 +1,69 @@
+"""Residual-RL training environment.
+
+The learned policy does **not** produce the full wrench; it outputs a bounded
+*correction* added to the (strong) CFDL-MFAC command:
+
+    tau = clip(tau_mfac + residual_scale * tau_max * a),   a in [-1, 1]^6.
+
+The environment runs the model-free adaptive baseline internally each step and
+exposes the same 18-D observation the deployed :class:`HybridController` uses,
+so a policy trained here transfers directly to
+``HybridController(residual_rl=True)``.  Because a zero action reproduces the
+baseline exactly, the learned correction can only *improve* on it -- a much
+easier and safer learning problem than learning a controller from scratch.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+from .auv_env import AUVEnv
+from ..controllers import HybridController
+
+
+class AUVResidualEnv(AUVEnv):
+    """AUV tracking env where the action is a residual on the MFAC command."""
+
+    def __init__(self, *args, residual_scale: float = 0.3, **kwargs):
+        self.residual_scale = float(residual_scale)
+        super().__init__(*args, **kwargs)
+
+    def _make_baseline(self) -> HybridController:
+        # Pure model-free adaptive baseline (no observers / supervisor / RL).
+        return HybridController(self.cfg, use_observers=False, use_supervisor=False,
+                                residual_scale=self.residual_scale)
+
+    def reset(self, seed=None, options=None):
+        obs, info = super().reset(seed=seed, options=options)
+        self.baseline = self._make_baseline()
+        self.baseline.reset()
+        return obs, info
+
+    def step(self, action):
+        action = np.clip(np.asarray(action, dtype=float).reshape(6), -1.0, 1.0)
+        eta_d, eta_d_dot = self.traj.reference(self.t)
+
+        # Model-free adaptive baseline command, then the bounded residual.
+        tau_mfac = self.baseline.control(self.vehicle.eta, self.vehicle.nu,
+                                         eta_d, eta_d_dot, self.dt)
+        tau_cmd = self.baseline.apply_residual(tau_mfac, action)
+
+        tau = self.thruster.step(tau_cmd, self.dt)
+        nu_c = self._current_body()
+        self.vehicle.step(tau, nu_c=nu_c)
+        self.t += self.dt
+        self.steps += 1
+
+        eta_d, _ = self.traj.reference(self.t)
+        from ..benchmark.base import pose_error
+        err = pose_error(eta_d, self.vehicle.eta)
+        err_norm = float(np.linalg.norm(err))
+        # Reward tracks error and penalises the *residual* effort (not the full
+        # wrench), so the policy is encouraged to correct only where it helps.
+        reward = -(self.w_e * err_norm ** 2 + self.w_u * float(action @ action)) + 0.5
+
+        terminated = err_norm > 25.0 or not np.all(np.isfinite(self.vehicle.state))
+        truncated = self.t >= self.max_t
+        obs = self._observe()
+        info = {"error_norm": err_norm, "tau": tau, "eta_d": eta_d}
+        return obs, float(reward), bool(terminated), bool(truncated), info

@@ -44,7 +44,8 @@ class HybridController:
                  td3_agent=None, k_outer=1.5, cfdl_feedforward=2.5,
                  nu_max=(2.0, 2.0, 2.0, 0.8, 0.8, 0.8),
                  use_observers: bool = True, use_supervisor: bool = True,
-                 disturbance_feedforward: bool = False):
+                 disturbance_feedforward: bool = False,
+                 residual_rl: bool = False, residual_scale: float = 0.3):
         self.cfg = config or default_config()
         self.p = params or REMUSParams()
         self.k1 = np.full(6, float(k_outer))
@@ -74,11 +75,18 @@ class HybridController:
 
         self.td3 = td3_agent
         self.use_observers = use_observers
-        self.use_supervisor = use_supervisor
+        # Residual-RL mode: the policy outputs a *bounded correction* added to
+        # the (strong) MFAC command, tau = clip(tau_mfac + scale*tau_max*a).
+        # A zero policy reproduces the adaptive baseline exactly, so the learned
+        # term can only improve on it -- unlike full-wrench blending it cannot
+        # regress below the baseline.  Residual mode bypasses the supervisor.
+        self.residual_rl = residual_rl
+        self.residual_scale = float(residual_scale)
+        self.use_supervisor = use_supervisor and not residual_rl
         self.disturbance_feedforward = disturbance_feedforward
         self.dob = DisturbanceObserver(self.p, self.cfg.observer) if use_observers else None
         self.fob = FaultObserver(6, self.cfg.observer) if use_observers else None
-        self.supervisor = HybridSupervisor(self.cfg.supervisor) if use_supervisor else None
+        self.supervisor = HybridSupervisor(self.cfg.supervisor) if self.use_supervisor else None
         self.reset()
 
     def reset(self) -> None:
@@ -106,12 +114,24 @@ class HybridController:
         nu_d = np.clip(nu_d, -self.nu_max, self.nu_max)  # feasible velocity envelope
         return nu_d, z1
 
+    @staticmethod
+    def rl_observation(z1, nu, eta_d_dot) -> np.ndarray:
+        """The 18-D policy observation shared by training and deployment."""
+
+        return np.concatenate([z1, nu, eta_d_dot]).astype(np.float32)
+
     def _rl_action(self, z1, nu, nu_d, eta_d_dot) -> np.ndarray:
         if self.td3 is None:
             return None
-        obs = np.concatenate([z1, nu, eta_d_dot]).astype(np.float32)
-        action = self.td3.select_action(obs, noise=None)
+        action = self.td3.select_action(self.rl_observation(z1, nu, eta_d_dot), noise=None)
         return np.clip(action, -1.0, 1.0) * self.tau_max
+
+    def apply_residual(self, tau_mfac: np.ndarray, action: np.ndarray) -> np.ndarray:
+        """Add a bounded learned correction to the adaptive command."""
+
+        action = np.clip(np.asarray(action, dtype=float).reshape(6), -1.0, 1.0)
+        tau = tau_mfac + self.residual_scale * self.tau_max * action
+        return np.clip(tau, -self.tau_max, self.tau_max)
 
     # ------------------------------------------------------------------ #
     def control(self, eta, nu, eta_d, eta_d_dot=None, dt: float | None = None) -> np.ndarray:
@@ -146,13 +166,19 @@ class HybridController:
             tau_mfac[i] = np.clip(u, -self.tau_max[i], self.tau_max[i])
         self._nu_d_prev = nu_d
 
-        # TD3 policy (optional) and confidence-guided fusion.
-        tau_rl = self._rl_action(z1, nu, nu_d, eta_d_dot)
-        if self.use_supervisor and tau_rl is not None:
-            tau, info = self.supervisor.fuse(tau_mfac, tau_rl, error=z1,
-                                             d_hat=d_hat, theta=theta, dt=dt)
+        # Learned policy: residual correction (preferred) or supervisor fusion.
+        if self.residual_rl and self.td3 is not None:
+            action = self.td3.select_action(
+                self.rl_observation(z1, nu, eta_d_dot), noise=None)
+            tau = self.apply_residual(tau_mfac, action)
+            info = {"alpha": 0.0, "residual": self.residual_scale}
         else:
-            tau, info = tau_mfac, {"alpha": 0.0}
+            tau_rl = self._rl_action(z1, nu, nu_d, eta_d_dot)
+            if self.use_supervisor and tau_rl is not None:
+                tau, info = self.supervisor.fuse(tau_mfac, tau_rl, error=z1,
+                                                 d_hat=d_hat, theta=theta, dt=dt)
+            else:
+                tau, info = tau_mfac, {"alpha": 0.0}
 
         # Optional disturbance-observer feed-forward.  Off by default: the
         # CFDL-MFAC loop is already adaptive and rejects slowly-varying
