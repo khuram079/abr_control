@@ -111,3 +111,6 @@ ENV/
 MUJOCO_LOG*
 *.stl
 *.STL
+
+# CFDL-MFAC-NCP-TD3 experiment outputs are transient; curated deliverables are force-added
+cfdl_mfac_ncp_td3/results/
