@@ -74,7 +74,8 @@ class HybridController:
                  feedforward_cap: float = 0.5, feedforward_tau: float = 0.15,
                  attitude_law: str = "smc",
                  att_kd=(20.0, 30.0, 30.0), att_ks=(8.0, 12.0, 12.0),
-                 att_phi: float = 0.1, att_lam: float = 1.5):
+                 att_phi: float = 0.1, att_lam: float = 1.5,
+                 trans_damping: float = 0.0):
         self.cfg = config or default_config()
         self.p = params or REMUSParams()
         # k1[0:3] is the translational outer-loop gain (feasible-velocity
@@ -144,6 +145,19 @@ class HybridController:
         self.att_ks = np.asarray(att_ks, dtype=float)
         self.att_phi = float(att_phi)
 
+        # Translational velocity-rate (acceleration-feedback) damping, applied
+        # in parallel with the MFAC command: tau_i -= trans_damping * dnu_i/dt.
+        # CFDL-MFAC is an *integrating* law, so its surge velocity loop is
+        # under-damped and limit-cycles about the equilibrium thrust -- the
+        # command swings +/-33 N (RMS) for a mean velocity a proportional law
+        # (SMC) holds with ~11 N RMS, which was the entire ~2x control-energy
+        # gap (localised to surge; see results/ENERGY_ANALYSIS.md).  In steady
+        # tracking dnu/dt is small so this term is inert; during the limit
+        # cycle it is large and damps it, cutting energy up to ~50% with a
+        # graceful tracking trade-off.  MFAC remains the adaptive core; this is
+        # a fixed inner damping loop, not a replacement.
+        self.trans_damping = float(trans_damping)
+
         self.td3 = td3_agent
         self.use_observers = use_observers
         # Residual-RL mode: the policy outputs a *bounded correction* added to
@@ -173,6 +187,7 @@ class HybridController:
         self._tau_prev = np.zeros(6)
         self._nu_d_prev = np.zeros(6)
         self._dnu_d_filt = np.zeros(6)
+        self._nu_prev = np.zeros(6)
         self.last_info = {}
 
     # ------------------------------------------------------------------ #
@@ -245,6 +260,14 @@ class HybridController:
                     u += np.clip(u_ff, -ff_limit, ff_limit)
             tau_mfac[i] = np.clip(u, -self.tau_max[i], self.tau_max[i])
         self._nu_d_prev = nu_d
+
+        # Velocity-rate damping on the translational channels (breaks the
+        # surge integrator limit cycle; inert in steady tracking).
+        if self.trans_damping:
+            acc = (nu[:3] - self._nu_prev[:3]) / dt
+            tau_mfac[:3] = np.clip(tau_mfac[:3] - self.trans_damping * acc,
+                                   -self.tau_max[:3], self.tau_max[:3])
+        self._nu_prev = nu.copy()
 
         # SMC attitude law (roll/pitch/yaw): boundary-layer sliding-mode
         # reaching law on the NED attitude error, mapped to the body-frame
