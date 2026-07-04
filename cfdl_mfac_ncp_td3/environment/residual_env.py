@@ -24,14 +24,28 @@ from ..controllers import HybridController
 class AUVResidualEnv(AUVEnv):
     """AUV tracking env where the action is a residual on the MFAC command."""
 
-    def __init__(self, *args, residual_scale: float = 0.3, **kwargs):
+    #: strong hybrid baseline (CFDL-MFAC + SMC attitude + damping), tuned params
+    #: from the v4-final fair-tuning run -- the residual policy learns a bounded
+    #: correction on top of THIS competitive controller, not the untuned default.
+    STRONG_BASELINE = dict(
+        k_outer=0.507, cfdl_feedforward=1.705, feedforward_cap=0.146,
+        att_lam=1.5 * 2.429, att_kd=np.array([20.0, 30.0, 30.0]) * 1.581,
+        att_ks=np.array([8.0, 12.0, 12.0]) * 0.999, trans_damping=12.084,
+    )
+
+    def __init__(self, *args, residual_scale: float = 0.3,
+                 baseline_kwargs: dict | None = None, **kwargs):
         self.residual_scale = float(residual_scale)
+        self.baseline_kwargs = baseline_kwargs if baseline_kwargs is not None \
+            else dict(self.STRONG_BASELINE)
         super().__init__(*args, **kwargs)
 
     def _make_baseline(self) -> HybridController:
-        # Pure model-free adaptive baseline (no observers / supervisor / RL).
+        # Strong hybrid baseline (no observers / supervisor / RL); the residual
+        # correction is added on top via apply_residual().
         return HybridController(self.cfg, use_observers=False, use_supervisor=False,
-                                residual_scale=self.residual_scale)
+                                residual_scale=self.residual_scale,
+                                **self.baseline_kwargs)
 
     def reset(self, seed=None, options=None):
         obs, info = super().reset(seed=seed, options=options)
