@@ -1,0 +1,55 @@
+Loaded residual policy: /home/user/abr_control/cfdl_mfac_ncp_td3/results/residual_v2/residual_agent.pt
+
+========================================================================
+FAIR TUNING (baselines, budget=40)
+========================================================================
+  tuned PID          best_rmse=8.1974  params={'kp': 0.769, 'ki': 2.617, 'kd': 1.537}
+  tuned SMC          best_rmse=0.5642  params={'lam': 0.622, 'kd': 1.721, 'ks': 2.803}
+  tuned MPC          best_rmse=0.6121  params={'q_pos': 32.93, 'q_vel': 2.764, 'r_u': 0.001}
+  tuned Fuzzy        best_rmse=10.2412  params={'ke': 2.072, 'e_width': 0.846, 'edot_width': 0.578}
+  tuned Backstepping best_rmse=0.4760  params={'k1': 0.618, 'k2': 2.565}
+  tuned Hybrid       best_rmse=0.6247  params={'k_outer': 0.507, 'prediction_gain': 1.705, 'feedforward_cap': 0.146, 'att_lam': 2.429, 'att_kd': 1.581, 'att_ks': 0.999, 'trans_damping': 12.084}
+
+========================================================================
+MONTE-CARLO (200 paired trials)
+========================================================================
+Mean +/- std of the five indicators:
+  controller        tracking_rmse  attitude_rmse  recovery_time control_energy  max_deviation
+  Hybrid (strong)   1.788+/-0.881   0.092+/-0.089  13.673+/-12.071106937.286+/-12267.756  3.776+/-1.657 
+  Hybrid+Residual   1.914+/-0.930   0.109+/-0.084  14.914+/-12.181101233.690+/-12749.862  4.006+/-1.746 
+  SMC               1.606+/-0.835   0.081+/-0.086  11.058+/-10.87576297.174+/-15943.032  3.508+/-1.571 
+  MPC               1.761+/-0.864   0.095+/-0.090  13.186+/-11.92170575.058+/-18079.225  3.748+/-1.617 
+  PID               3.675+/-2.656   0.394+/-0.302  27.910+/-15.57580656.409+/-31610.298  7.353+/-5.088 
+  Fuzzy             3.135+/-1.934   0.322+/-0.330  24.734+/-14.61771137.434+/-24897.594  6.406+/-3.739 
+
+Hybrid+Residual vs Hybrid (strong):
+  tracking_rmse    res=1.914 Hybrid (strong)=1.788 (worse)  p=1.00e-14 d=+0.14
+  attitude_rmse    res=0.109 Hybrid (strong)=0.092 (worse)  p=4.37e-16 d=+0.21
+  recovery_time    res=14.914 Hybrid (strong)=13.673 (worse)  p=7.47e-04 d=+0.10
+  control_energy   res=101233.690 Hybrid (strong)=106937.286 (better)  p=7.57e-49 d=-0.45
+  max_deviation    res=4.006 Hybrid (strong)=3.776 (worse)  p=8.54e-15 d=+0.13
+
+Hybrid+Residual vs MPC:
+  tracking_rmse    res=1.914 MPC=1.761 (worse)  p=1.39e-16 d=+0.17
+  attitude_rmse    res=0.109 MPC=0.095 (worse)  p=5.14e-09 d=+0.16
+  recovery_time    res=14.914 MPC=13.186 (worse)  p=4.53e-06 d=+0.14
+  control_energy   res=101233.690 MPC=70575.058 (worse)  p=5.03e-99 d=+1.95
+  max_deviation    res=4.006 MPC=3.748 (worse)  p=3.02e-13 d=+0.15
+
+Hybrid+Residual vs PID:
+  tracking_rmse    res=1.914 PID=3.675 (better)  p=3.56e-22 d=-0.88
+  attitude_rmse    res=0.109 PID=0.394 (better)  p=7.97e-40 d=-1.28
+  recovery_time    res=14.914 PID=27.910 (better)  p=3.27e-39 d=-0.93
+  control_energy   res=101233.690 PID=80656.409 (worse)  p=2.33e-23 d=+0.85
+  max_deviation    res=4.006 PID=7.353 (better)  p=4.06e-20 d=-0.88
+
+========================================================================
+STABILITY ANALYSIS (residual hybrid)
+========================================================================
+1. Lyapunov (SMC attitude): V0=2.854 -> V_final=0.2144 (decay 92.5%), s_ultimate=0.605, converges=True
+2. CFDL-MFAC pseudo-gradient: bounded=True sign_definite=True |phi| in [0.0000, 0.0387]
+3. ISS: error bounds [0.168, 0.096, 0.132, 0.305, 3.363] over current [0.0, 0.2, 0.4, 0.6, 0.8], ISS gain=3.300, any_diverged=False
+4. Region of attraction: final errors [0.163, 0.148, 0.175, 0.14, 0.167] from radii [0.5, 1.0, 2.0, 4.0, 8.0], fraction converged=1.0
+5. Monte-Carlo robust stability: divergence_rate=0.000, ultimate bound mean=0.251 (p95 0.749)
+
+Artifacts -> /home/user/abr_control/cfdl_mfac_ncp_td3/results/residual_v2/
