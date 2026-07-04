@@ -85,7 +85,7 @@ def _build(name: str, params: dict, tau_max):
 # energy term is a meaningful but non-dominant fraction of a typical validation
 # score (~0.1 for the efficient baselines, larger for an inefficient one) and
 # preserves the baselines' RMSE ordering.
-ENERGY_WEIGHT = 0.3
+ENERGY_WEIGHT = 0.05
 ENERGY_REF = 1.0e5
 
 
