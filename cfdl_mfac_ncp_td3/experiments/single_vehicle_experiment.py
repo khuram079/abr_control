@@ -3,7 +3,7 @@
 Fair disclosed tuning of every controller -> 500-trial paired Monte-Carlo with
 the five indicators (random initial position, ocean current, sensor noise,
 actuator faults) -> significance vs MPC/PID (paired t-test + Wilcoxon) ->
-+/-20% parameter-sensitivity analysis (recovery threshold, prediction gain).
++/-20% parameter-sensitivity analysis (recovery threshold, feedforward cap).
 
 Run::
 
@@ -42,7 +42,8 @@ def _factories(cfg, tuning):
 
     def hybrid():
         return HybridController(cfg, use_observers=False, use_supervisor=False,
-                                k_outer=hp["k_outer"], cfdl_feedforward=hp["prediction_gain"])
+                                k_outer=hp["k_outer"], cfdl_feedforward=hp["prediction_gain"],
+                                feedforward_cap=hp["feedforward_cap"])
 
     return {
         "Hybrid (ours)": hybrid,
@@ -108,7 +109,8 @@ def run(trials: int, seed: int, tune_budget: int) -> None:
     _log(f"\nParameter sensitivity (+/-20%):")
     factors = np.array([0.8, 0.9, 1.0, 1.1, 1.2])
     sens = {"factors": factors.tolist()}
-    for pname, base_val in (("recovery_threshold", sim.rec_thr), ("prediction_gain", sim.pred_gain)):
+    base_cap = tuning["Hybrid"]["best_params"]["feedforward_cap"]
+    for pname, base_val in (("recovery_threshold", sim.rec_thr), ("feedforward_cap", base_cap)):
         tr = []
         for fct in factors:
             kw = {pname: base_val * fct}
@@ -132,7 +134,7 @@ def run(trials: int, seed: int, tune_budget: int) -> None:
     fig.tight_layout(); fig.savefig(os.path.join(RESULTS_DIR, "tracking_rmse.png")); plt.close(fig)
 
     fig, ax = plt.subplots(1, 2, figsize=(12, 4.5))
-    for i, pname in enumerate(("recovery_threshold", "prediction_gain")):
+    for i, pname in enumerate(("recovery_threshold", "feedforward_cap")):
         ax[i].plot(100 * (factors - 1), sens[pname]["tracking_rmse"], "C2-o")
         ax[i].axvline(0, color="k", lw=0.6, ls="--")
         ax[i].set_xlabel(f"{pname} deviation [%]"); ax[i].set_ylabel("tracking RMSE [m]")
@@ -179,7 +181,7 @@ def _write_report(out):
         L.append("")
     L.append("## Parameter sensitivity (±20%)\n")
     f = out["sensitivity"]["factors"]
-    for pname in ("recovery_threshold", "prediction_gain"):
+    for pname in ("recovery_threshold", "feedforward_cap"):
         tr = out["sensitivity"][pname]["tracking_rmse"]
         spread = (max(tr) - min(tr)) / np.mean(tr) * 100
         L.append(f"- **{pname}**: tracking RMSE {['%.3f'%v for v in tr]} across {f} → "

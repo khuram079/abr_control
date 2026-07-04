@@ -85,7 +85,8 @@ class FormationSimulator:
 
     def simulate(self, follower_factory, seed: int = 0, randomize: bool = True,
                  fault: bool = True, recovery_threshold: float | None = None,
-                 prediction_gain: float | None = None) -> dict:
+                 prediction_gain: float | None = None,
+                 feedforward_cap: float | None = None) -> dict:
         rng = np.random.default_rng(seed)
         tm = np.asarray(self.cfg.thruster.tau_max, dtype=float)
         rec_thr = self.fcfg.recovery_threshold if recovery_threshold is None else recovery_threshold
@@ -121,6 +122,8 @@ class FormationSimulator:
             ctrl = follower_factory()
             if hasattr(ctrl, "cfdl_feedforward"):
                 ctrl.cfdl_feedforward = pred_gain
+            if feedforward_cap is not None and hasattr(ctrl, "ff_cap"):
+                ctrl.ff_cap = feedforward_cap
             if hasattr(ctrl, "reset"):
                 ctrl.reset()
             followers.append(veh)
@@ -195,9 +198,20 @@ class FormationSimulator:
                 # a threshold-triggered outer-gain boost, applied only to
                 # controllers that advertise recovery support.  Baselines run
                 # their standard feedback -- they are not handicapped, they
-                # simply lack this feature.
+                # simply lack this feature.  The boost ramps proportionally
+                # with how far the error is past the threshold (capped at
+                # recovery_boost) instead of a blunt on/off step: a fixed 2x
+                # jump the instant the threshold is crossed caused overshoot
+                # and oscillation that inflated recovery time, peak deviation
+                # and energy -- exactly the indicators recovery is meant to
+                # improve.
                 if support_recovery[j] and base_k1[j] is not None:
-                    fctrls[j].k1 = base_k1[j] * (self.fcfg.recovery_boost if in_recovery[j] else 1.0)
+                    if in_recovery[j]:
+                        severity = max(0.0, enorm / rec_thr - 1.0)
+                        boost = 1.0 + (self.fcfg.recovery_boost - 1.0) * min(1.0, severity)
+                    else:
+                        boost = 1.0
+                    fctrls[j].k1 = base_k1[j] * boost
 
                 tau = fctrls[j].control(eta_meas, nu_meas, slot, slot_dot, self.dt)
                 tau_app = fthr[j].step(tau, self.dt)

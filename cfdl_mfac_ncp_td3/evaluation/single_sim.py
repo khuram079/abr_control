@@ -53,7 +53,8 @@ class SingleVehicleSimulator:
 
     def simulate(self, controller_factory, seed: int = 0, randomize: bool = True,
                  fault: bool = True, recovery_threshold: float | None = None,
-                 prediction_gain: float | None = None) -> dict:
+                 prediction_gain: float | None = None,
+                 feedforward_cap: float | None = None) -> dict:
         rng = np.random.default_rng(seed)
         rec_thr = self.rec_thr if recovery_threshold is None else recovery_threshold
         pred_gain = self.pred_gain if prediction_gain is None else prediction_gain
@@ -73,6 +74,8 @@ class SingleVehicleSimulator:
         ctrl = controller_factory()
         if hasattr(ctrl, "cfdl_feedforward"):
             ctrl.cfdl_feedforward = pred_gain
+        if feedforward_cap is not None and hasattr(ctrl, "ff_cap"):
+            ctrl.ff_cap = feedforward_cap
         if hasattr(ctrl, "reset"):
             ctrl.reset()
         base_k1 = np.array(ctrl.k1).copy() if hasattr(ctrl, "k1") else None
@@ -114,9 +117,16 @@ class SingleVehicleSimulator:
                 in_recovery = False
             if in_recovery:
                 recovery_time += self.dt
-            # recovery action (only for controllers that support it)
+            # recovery action (only for controllers that support it): a
+            # proportional ramp, not a blunt on/off step (see formation_env.py
+            # for the rationale -- a hard step caused overshoot/oscillation).
             if support and base_k1 is not None:
-                ctrl.k1 = base_k1 * (self.rec_boost if in_recovery else 1.0)
+                if in_recovery:
+                    severity = max(0.0, enorm / rec_thr - 1.0)
+                    boost = 1.0 + (self.rec_boost - 1.0) * min(1.0, severity)
+                else:
+                    boost = 1.0
+                ctrl.k1 = base_k1 * boost
 
             eta_meas = veh.eta + rng.normal(0, meas_noise, 6)
             nu_meas = veh.nu + rng.normal(0, meas_noise, 6)

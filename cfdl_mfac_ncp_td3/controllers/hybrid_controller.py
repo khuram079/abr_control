@@ -23,6 +23,8 @@ control; with the supervisor disabled it is MFAC + feed-forward.
 
 from __future__ import annotations
 
+import dataclasses
+
 import numpy as np
 
 from ..config import ExperimentConfig, default_config
@@ -45,7 +47,8 @@ class HybridController:
                  nu_max=(2.0, 2.0, 2.0, 0.8, 0.8, 0.8),
                  use_observers: bool = True, use_supervisor: bool = True,
                  disturbance_feedforward: bool = False,
-                 residual_rl: bool = False, residual_scale: float = 0.3):
+                 residual_rl: bool = False, residual_scale: float = 0.3,
+                 feedforward_cap: float = 0.5, feedforward_tau: float = 0.15):
         self.cfg = config or default_config()
         self.p = params or REMUSParams()
         self.k1 = np.full(6, float(k_outer))
@@ -55,6 +58,14 @@ class HybridController:
         # This supplies the anticipation a purely reactive MFAC lacks, sharply
         # reducing phase lag on moving references (no plant model used).
         self.cfdl_feedforward = float(cfdl_feedforward)
+        # The raw term is capped (as a fraction of tau_max) and its input is
+        # low-pass filtered: an un-capped, un-filtered feed-forward spikes
+        # whenever the online Phi estimate is transiently small, which was
+        # burning ~2x the control energy of every baseline for little accuracy
+        # gain (measured: single-vehicle/formation energy consistently worst
+        # of all 6 controllers compared).
+        self.ff_cap = float(feedforward_cap)
+        self._ff_alpha = self.cfg.sim.dt / (feedforward_tau + self.cfg.sim.dt)
         # Feasible body-velocity envelope: the outer loop never commands a
         # velocity the (drag-limited) vehicle cannot achieve, which would
         # otherwise saturate the inner loop into a limit cycle.
@@ -67,11 +78,21 @@ class HybridController:
         # of single-input/single-output adaptive loops is far more robust than
         # one coupled MIMO loop; the off-diagonal Coriolis coupling becomes a
         # disturbance that each loop's pseudo-gradient adapts to.
-        self.mfac = [
-            CFDLMFAC(1, 1, self.cfg.mfac,
-                     u_bounds=(np.array([-tau_max[i]]), np.array([tau_max[i]])))
-            for i in range(6)
-        ]
+        #
+        # Each loop's initial pseudo-Jacobian is physically scaled by the
+        # rigid-body+added-mass diagonal dt/M_ii, anchored so surge keeps the
+        # originally-calibrated value.  A single shared phi_init (the previous
+        # behaviour) under-primes roll by ~40x (M_roll << M_surge), which is
+        # why attitude tracking lagged every other benchmark: the online PJM
+        # estimator had to correct a 40x-wrong starting point from scratch.
+        M_diag = np.diag(self.p.mass_matrix())
+        true_gain = self.cfg.sim.dt / np.abs(M_diag)
+        phi_scale = true_gain / true_gain[0]
+        self.mfac = []
+        for i in range(6):
+            mfac_cfg = dataclasses.replace(self.cfg.mfac, phi_init=self.cfg.mfac.phi_init * phi_scale[i])
+            self.mfac.append(CFDLMFAC(1, 1, mfac_cfg,
+                             u_bounds=(np.array([-tau_max[i]]), np.array([tau_max[i]]))))
 
         self.td3 = td3_agent
         self.use_observers = use_observers
@@ -101,6 +122,7 @@ class HybridController:
             self.supervisor.reset()
         self._tau_prev = np.zeros(6)
         self._nu_d_prev = np.zeros(6)
+        self._dnu_d_filt = np.zeros(6)
         self.last_info = {}
 
     # ------------------------------------------------------------------ #
@@ -156,14 +178,20 @@ class HybridController:
         # body-velocity channel nu_i -> nu_d_i with a wrench command, plus a
         # model-free CFDL inverse feed-forward that anticipates the moving
         # velocity reference using the learned per-channel pseudo-Jacobian.
+        # The reference-rate input is low-pass filtered and the resulting
+        # feed-forward wrench is capped (fraction of tau_max) so a transiently
+        # small Phi estimate cannot inject a large, energy-wasting spike.
         tau_mfac = np.zeros(6)
-        dnu_d = nu_d - self._nu_d_prev
+        dnu_d_raw = nu_d - self._nu_d_prev
+        self._dnu_d_filt += self._ff_alpha * (dnu_d_raw - self._dnu_d_filt)
         for i in range(6):
             u = self.mfac[i].control([nu[i]], [nu_d[i]])[0]
             if self.cfdl_feedforward:
                 phi = float(self.mfac[i].model.phi[0, 0])
                 if abs(phi) > 1e-4:
-                    u += self.cfdl_feedforward * dnu_d[i] / phi
+                    u_ff = self.cfdl_feedforward * self._dnu_d_filt[i] / phi
+                    ff_limit = self.ff_cap * self.tau_max[i]
+                    u += np.clip(u_ff, -ff_limit, ff_limit)
             tau_mfac[i] = np.clip(u, -self.tau_max[i], self.tau_max[i])
         self._nu_d_prev = nu_d
 

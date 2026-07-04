@@ -37,7 +37,8 @@ SEARCH_SPACES = {
     "Fuzzy": {"ke": (0.4, 2.5, False), "e_width": (0.5, 2.0, False),
               "edot_width": (0.5, 2.0, False)},
     "Backstepping": {"k1": (0.4, 3.0, False), "k2": (0.4, 3.0, False)},
-    "Hybrid": {"k_outer": (0.5, 3.0, False), "prediction_gain": (0.5, 4.0, False)},
+    "Hybrid": {"k_outer": (0.4, 2.0, False), "prediction_gain": (0.5, 4.0, False),
+              "feedforward_cap": (0.05, 0.6, True)},
 }
 
 
@@ -65,7 +66,8 @@ def _build(name: str, params: dict, tau_max):
         cfg = default_config()
         return HybridController(cfg, use_observers=False, use_supervisor=False,
                                 k_outer=params["k_outer"],
-                                cfdl_feedforward=params["prediction_gain"])
+                                cfdl_feedforward=params["prediction_gain"],
+                                feedforward_cap=params["feedforward_cap"])
     raise KeyError(name)
 
 

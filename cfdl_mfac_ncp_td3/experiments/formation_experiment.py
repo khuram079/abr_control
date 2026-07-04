@@ -55,7 +55,8 @@ def _factories(cfg, tuning):
     def hybrid():
         # observers are unused when the supervisor is off -> keep them off for speed
         return HybridController(cfg, use_observers=False, use_supervisor=False,
-                                k_outer=hp["k_outer"], cfdl_feedforward=hp["prediction_gain"])
+                                k_outer=hp["k_outer"], cfdl_feedforward=hp["prediction_gain"],
+                                feedforward_cap=hp["feedforward_cap"])
 
     return {
         "Hybrid (ours)": hybrid,
@@ -123,13 +124,13 @@ def run(trials: int, seed: int, tune_budget: int) -> None:
 
     # ---- 4. parameter sensitivity (+/-20%) -------------------------- #
     _log(f"\nParameter sensitivity (+/-20%): formation_rmse & recovery_time vs "
-         f"recovery threshold and prediction gain:")
+         f"recovery threshold and feed-forward cap:")
     base_thr = fcfg.recovery_threshold
-    base_pred = fcfg.prediction_gain
+    base_cap = tuning["Hybrid"]["best_params"]["feedforward_cap"]
     factors = np.array([0.8, 0.9, 1.0, 1.1, 1.2])
     sens = {"factors": factors.tolist()}
     n_sens_seeds = 20
-    for pname, base_val in (("recovery_threshold", base_thr), ("prediction_gain", base_pred)):
+    for pname, base_val in (("recovery_threshold", base_thr), ("feedforward_cap", base_cap)):
         fr, rt = [], []
         for fct in factors:
             kw = {pname: base_val * fct}
@@ -156,7 +157,7 @@ def run(trials: int, seed: int, tune_budget: int) -> None:
     fig.tight_layout(); fig.savefig(os.path.join(RESULTS_DIR, "formation_rmse.png")); plt.close(fig)
 
     fig, ax = plt.subplots(1, 2, figsize=(12, 4.5))
-    for i, pname in enumerate(("recovery_threshold", "prediction_gain")):
+    for i, pname in enumerate(("recovery_threshold", "feedforward_cap")):
         ax[i].plot(100 * (factors - 1), sens[pname]["formation_rmse"], "C2-o", label="formation RMSE")
         ax[i].set_xlabel(f"{pname} deviation [%]"); ax[i].set_ylabel("formation RMSE [m]")
         ax[i].set_title(f"Sensitivity to {pname}")
@@ -222,7 +223,7 @@ def _write_report(out):
         lines.append("")
     lines.append("## Parameter sensitivity (±20%)\n")
     f = out["sensitivity"]["factors"]
-    for pname in ("recovery_threshold", "prediction_gain"):
+    for pname in ("recovery_threshold", "feedforward_cap"):
         fr = out["sensitivity"][pname]["formation_rmse"]
         spread = (max(fr) - min(fr)) / np.mean(fr) * 100
         lines.append(f"- **{pname}**: formation RMSE {['%.3f'%v for v in fr]} across factors "
