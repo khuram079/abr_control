@@ -23,7 +23,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 from ..config import default_config
-from ..controllers import HybridController
 from ..formation import tune_all, build_tuned
 from ..evaluation.single_sim import SingleVehicleSimulator, sv_indicators, SV_INDICATORS
 from ..statistics.tests import paired_ttest, wilcoxon
@@ -38,15 +37,9 @@ def _log(m: str) -> None:
 
 def _factories(cfg, tuning):
     tm = cfg.thruster.tau_max
-    hp = tuning["Hybrid"]["best_params"]
-
-    def hybrid():
-        return HybridController(cfg, use_observers=False, use_supervisor=False,
-                                k_outer=hp["k_outer"], cfdl_feedforward=hp["prediction_gain"],
-                                feedforward_cap=hp["feedforward_cap"])
 
     return {
-        "Hybrid (ours)": hybrid,
+        "Hybrid (ours)": lambda: build_tuned("Hybrid", tuning, tm),
         "SMC": lambda: build_tuned("SMC", tuning, tm),
         "Backstepping": lambda: build_tuned("Backstepping", tuning, tm),
         "MPC": lambda: build_tuned("MPC", tuning, tm),

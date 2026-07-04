@@ -1,24 +1,47 @@
-"""Integrated CFDL-MFAC-NCP-TD3 hybrid controller.
+"""Integrated CFDL-MFAC / SMC hybrid controller (+ optional NCP-gated TD3).
 
-Architecture (cascade + fusion)::
+Architecture (per-DOF model selection + fusion)::
 
-    eta_d --> [outer kinematic loop] --> nu_d --> [CFDL-MFAC inner loop] --> tau_mfac
-                                                                              |
-                       [TD3 policy] --> tau_rl --------------------------- [supervisor] --> tau
-                                                                              ^
-                       [observers: state / disturbance / fault] -------------/
+    eta_d --> [outer kinematic loop] --> nu_d --> [CFDL-MFAC]  translational --> tau[0:3]
+                                     |                                                    \\
+                                     +--> z1, e_dot --------> [SMC reaching law] attitude --> tau[3:6]
+                                                                                              |
+                       [TD3 policy] --> tau_rl ------------------------------------------ [supervisor] --> tau
+                                                                                              ^
+                       [observers: state / disturbance / fault] ---------------------------/
+
+CFDL-MFAC remains the controller's core -- it is model-free and adaptive,
+which is where it earns its keep: rejecting hydrodynamic/mass uncertainty and
+thruster faults on the translational channels (surge/sway/heave).  Measured
+across >1500 Monte-Carlo trials (single-vehicle + formation studies), the
+per-DOF MFAC bank was consistently the weak point on the *rotational* channels
+(attitude RMSE 2-8x worse than SMC/MPC): those channels have small inertia and
+strongly nonlinear Euler kinematics, where a reactive, purely-adaptive law
+converges slowly relative to a controller with an explicit sliding surface.
+Rather than force MFAC to fix that empirically (already attempted via per-DOF
+Phi rescaling -- it helped but did not close the gap), the attitude channels
+are handed to a boundary-layer **sliding-mode law** (the same design used by
+the standalone SMC benchmark), fed by the same pose-error/outer-loop state and
+sharing the same (boostable) outer gain ``k1`` for a unified recovery
+response.  ``attitude_law="mfac"`` reverts to the pure per-DOF MFAC bank for
+ablation comparison.
 
 * The **outer loop** turns the pose error into a desired body velocity
   ``nu_d = J^{-1}(eta_d_dot + K1 (eta_d - eta))``.  Velocity is a CFDL-valid
   controlled output (it settles for constant wrench), unlike pose.
-* The **inner CFDL-MFAC loop** drives ``nu -> nu_d`` with the model-free
-  adaptive law, learning the pseudo-Jacobian ``tau -> nu`` online.
+* The **CFDL-MFAC** bank drives ``nu -> nu_d`` on surge/sway/heave with the
+  model-free adaptive law, learning the pseudo-Jacobian ``tau -> nu`` online,
+  plus a capped/filtered CFDL feed-forward for anticipation.
+* The **SMC** law drives the NED attitude error/rate on roll/pitch/yaw via a
+  sliding surface ``s = e_dot + k1 e``, boundary-layer reaching law, mapped to
+  the body-frame wrench through the (block-diagonal) kinematic Jacobian
+  transpose.
 * The **observer suite** estimates the lumped disturbance and actuator faults,
-  which feed the confidence-guided **supervisor** that fuses ``tau_mfac`` with
-  the (robust) **TD3** policy output.
+  which feed the confidence-guided **supervisor** that fuses the combined
+  command with the (optional, gated) **TD3** policy output.
 
-The controller degrades gracefully: with no TD3 policy it is pure adaptive
-control; with the supervisor disabled it is MFAC + feed-forward.
+The controller degrades gracefully: with no TD3 policy it is pure
+CFDL-MFAC+SMC; with the supervisor disabled it is that plus feed-forward only.
 """
 
 from __future__ import annotations
@@ -48,10 +71,21 @@ class HybridController:
                  use_observers: bool = True, use_supervisor: bool = True,
                  disturbance_feedforward: bool = False,
                  residual_rl: bool = False, residual_scale: float = 0.3,
-                 feedforward_cap: float = 0.5, feedforward_tau: float = 0.15):
+                 feedforward_cap: float = 0.5, feedforward_tau: float = 0.15,
+                 attitude_law: str = "smc",
+                 att_kd=(20.0, 30.0, 30.0), att_ks=(8.0, 12.0, 12.0),
+                 att_phi: float = 0.1, att_lam: float = 1.5):
         self.cfg = config or default_config()
         self.p = params or REMUSParams()
-        self.k1 = np.full(6, float(k_outer))
+        # k1[0:3] is the translational outer-loop gain (feasible-velocity
+        # command for CFDL-MFAC); k1[3:6] is the attitude sliding-surface
+        # slope (independently tunable -- the rotational Euler kinematics
+        # warrant a different aggressiveness than the translational velocity
+        # loop; a single shared value measurably hurt attitude tracking).
+        # Both halves share one array so the external threshold-triggered
+        # recovery boost (which scales k1 uniformly) accelerates translational
+        # MFAC and attitude SMC together during fault/error recovery.
+        self.k1 = np.array([k_outer] * 3 + [att_lam] * 3, dtype=float)
         # CFDL inverse feed-forward gain.  A model-free anticipatory term that
         # uses MFAC's *own* learned pseudo-Jacobian Phi to compute the wrench
         # needed to realise the desired velocity change: tau_ff = g * dnu_d/Phi.
@@ -82,17 +116,33 @@ class HybridController:
         # Each loop's initial pseudo-Jacobian is physically scaled by the
         # rigid-body+added-mass diagonal dt/M_ii, anchored so surge keeps the
         # originally-calibrated value.  A single shared phi_init (the previous
-        # behaviour) under-primes roll by ~40x (M_roll << M_surge), which is
-        # why attitude tracking lagged every other benchmark: the online PJM
-        # estimator had to correct a 40x-wrong starting point from scratch.
+        # behaviour) under-primes roll by ~40x (M_roll << M_surge).
         M_diag = np.diag(self.p.mass_matrix())
         true_gain = self.cfg.sim.dt / np.abs(M_diag)
         phi_scale = true_gain / true_gain[0]
+
+        # attitude_law selects which model drives roll/pitch/yaw: "smc" hands
+        # the rotational channels (small inertia, strongly nonlinear Euler
+        # kinematics) to a boundary-layer sliding-mode law, while CFDL-MFAC
+        # keeps surge/sway/heave -- the channels where hydrodynamic/mass
+        # uncertainty and thruster faults are the dominant, model-free-suited
+        # source of error.  "mfac" keeps the pure per-DOF MFAC bank on all 6
+        # channels (the previous architecture) for ablation comparison.
+        self.attitude_law = attitude_law
+        self.mfac_dofs = list(range(6)) if attitude_law == "mfac" else [0, 1, 2]
         self.mfac = []
-        for i in range(6):
+        for i in self.mfac_dofs:
             mfac_cfg = dataclasses.replace(self.cfg.mfac, phi_init=self.cfg.mfac.phi_init * phi_scale[i])
             self.mfac.append(CFDLMFAC(1, 1, mfac_cfg,
                              u_bounds=(np.array([-tau_max[i]]), np.array([tau_max[i]]))))
+
+        # SMC attitude reaching-law gains (unused when attitude_law="mfac").
+        # The sliding-surface slope reuses self.k1[3:] so the same external
+        # recovery-boost mechanism (which scales k1) accelerates both the
+        # translational MFAC loop and the attitude SMC law during recovery.
+        self.att_kd = np.asarray(att_kd, dtype=float)
+        self.att_ks = np.asarray(att_ks, dtype=float)
+        self.att_phi = float(att_phi)
 
         self.td3 = td3_agent
         self.use_observers = use_observers
@@ -173,8 +223,9 @@ class HybridController:
 
         # Outer kinematic loop -> desired body velocity.
         nu_d, z1 = self._outer_loop(eta, nu, eta_d, eta_d_dot)
+        J = jacobian(eta)
 
-        # Inner CFDL-MFAC loop: a bank of SISO adaptive loops drives each
+        # CFDL-MFAC: a bank of SISO adaptive loops drives each translational
         # body-velocity channel nu_i -> nu_d_i with a wrench command, plus a
         # model-free CFDL inverse feed-forward that anticipates the moving
         # velocity reference using the learned per-channel pseudo-Jacobian.
@@ -184,16 +235,29 @@ class HybridController:
         tau_mfac = np.zeros(6)
         dnu_d_raw = nu_d - self._nu_d_prev
         self._dnu_d_filt += self._ff_alpha * (dnu_d_raw - self._dnu_d_filt)
-        for i in range(6):
-            u = self.mfac[i].control([nu[i]], [nu_d[i]])[0]
+        for idx, i in enumerate(self.mfac_dofs):
+            u = self.mfac[idx].control([nu[i]], [nu_d[i]])[0]
             if self.cfdl_feedforward:
-                phi = float(self.mfac[i].model.phi[0, 0])
+                phi = float(self.mfac[idx].model.phi[0, 0])
                 if abs(phi) > 1e-4:
                     u_ff = self.cfdl_feedforward * self._dnu_d_filt[i] / phi
                     ff_limit = self.ff_cap * self.tau_max[i]
                     u += np.clip(u_ff, -ff_limit, ff_limit)
             tau_mfac[i] = np.clip(u, -self.tau_max[i], self.tau_max[i])
         self._nu_d_prev = nu_d
+
+        # SMC attitude law (roll/pitch/yaw): boundary-layer sliding-mode
+        # reaching law on the NED attitude error, mapped to the body-frame
+        # wrench via J^T.  J is block-diagonal (translational/rotational
+        # blocks decouple), so zeroing f_eta[:3] isolates tau[3:6] exactly.
+        if self.attitude_law == "smc":
+            e_dot = eta_d_dot - J @ nu
+            s_att = e_dot[3:] + self.k1[3:] * z1[3:]
+            f_att = self.att_kd * s_att + self.att_ks * np.tanh(s_att / self.att_phi)
+            f_eta = np.zeros(6)
+            f_eta[3:] = f_att
+            tau_att = J.T @ f_eta
+            tau_mfac[3:] = np.clip(tau_att[3:], -self.tau_max[3:], self.tau_max[3:])
 
         # Learned policy: residual correction (preferred) or supervisor fusion.
         if self.residual_rl and self.td3 is not None:
