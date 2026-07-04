@@ -11,37 +11,37 @@ FAIR TUNING (baselines, budget=40)
   tuned Hybrid       best_rmse=0.6247  params={'k_outer': 0.507, 'prediction_gain': 1.705, 'feedforward_cap': 0.146, 'att_lam': 2.429, 'att_kd': 1.581, 'att_ks': 0.999, 'trans_damping': 12.084}
 
 ========================================================================
-MONTE-CARLO (200 paired trials)
+MONTE-CARLO (500 paired trials)
 ========================================================================
 Mean +/- std of the five indicators:
   controller        tracking_rmse  attitude_rmse  recovery_time control_energy  max_deviation
-  Hybrid (strong)   1.788+/-0.881   0.092+/-0.089  13.673+/-12.071106937.286+/-12267.756  3.776+/-1.657 
-  Hybrid+Residual   1.914+/-0.930   0.109+/-0.084  14.914+/-12.181101233.690+/-12749.862  4.006+/-1.746 
-  SMC               1.606+/-0.835   0.081+/-0.086  11.058+/-10.87576297.174+/-15943.032  3.508+/-1.571 
-  MPC               1.761+/-0.864   0.095+/-0.090  13.186+/-11.92170575.058+/-18079.225  3.748+/-1.617 
-  PID               3.675+/-2.656   0.394+/-0.302  27.910+/-15.57580656.409+/-31610.298  7.353+/-5.088 
-  Fuzzy             3.135+/-1.934   0.322+/-0.330  24.734+/-14.61771137.434+/-24897.594  6.406+/-3.739 
+  Hybrid (strong)   1.757+/-0.867   0.089+/-0.079  13.388+/-12.243106713.962+/-12231.635  3.700+/-1.629 
+  Hybrid+Residual   1.875+/-0.904   0.104+/-0.075  14.722+/-12.520100936.093+/-12987.753  3.917+/-1.709 
+  SMC               1.568+/-0.813   0.075+/-0.075  10.646+/-10.62776399.403+/-15865.862  3.412+/-1.529 
+  MPC               1.725+/-0.843   0.086+/-0.075  12.811+/-11.86570212.627+/-17534.047  3.652+/-1.579 
+  PID               3.551+/-2.481   0.383+/-0.306  27.739+/-15.26779390.818+/-29519.520  7.054+/-4.833 
+  Fuzzy             2.996+/-1.836   0.294+/-0.260  24.347+/-14.44469977.145+/-22939.177  6.098+/-3.583 
 
 Hybrid+Residual vs Hybrid (strong):
-  tracking_rmse    res=1.914 Hybrid (strong)=1.788 (worse)  p=1.00e-14 d=+0.14
-  attitude_rmse    res=0.109 Hybrid (strong)=0.092 (worse)  p=4.37e-16 d=+0.21
-  recovery_time    res=14.914 Hybrid (strong)=13.673 (worse)  p=7.47e-04 d=+0.10
-  control_energy   res=101233.690 Hybrid (strong)=106937.286 (better)  p=7.57e-49 d=-0.45
-  max_deviation    res=4.006 Hybrid (strong)=3.776 (worse)  p=8.54e-15 d=+0.13
+  tracking_rmse    res=1.875 Hybrid (strong)=1.757 (worse)  p=7.00e-32 d=+0.13
+  attitude_rmse    res=0.104 Hybrid (strong)=0.089 (worse)  p=1.47e-26 d=+0.20
+  recovery_time    res=14.722 Hybrid (strong)=13.388 (worse)  p=3.66e-10 d=+0.11
+  control_energy   res=100936.093 Hybrid (strong)=106713.962 (better)  p=5.32e-125 d=-0.46
+  max_deviation    res=3.917 Hybrid (strong)=3.700 (worse)  p=1.67e-30 d=+0.13
 
 Hybrid+Residual vs MPC:
-  tracking_rmse    res=1.914 MPC=1.761 (worse)  p=1.39e-16 d=+0.17
-  attitude_rmse    res=0.109 MPC=0.095 (worse)  p=5.14e-09 d=+0.16
-  recovery_time    res=14.914 MPC=13.186 (worse)  p=4.53e-06 d=+0.14
-  control_energy   res=101233.690 MPC=70575.058 (worse)  p=5.03e-99 d=+1.95
-  max_deviation    res=4.006 MPC=3.748 (worse)  p=3.02e-13 d=+0.15
+  tracking_rmse    res=1.875 MPC=1.725 (worse)  p=3.45e-41 d=+0.17
+  attitude_rmse    res=0.104 MPC=0.086 (worse)  p=7.71e-35 d=+0.24
+  recovery_time    res=14.722 MPC=12.811 (worse)  p=2.01e-17 d=+0.16
+  control_energy   res=100936.093 MPC=70212.627 (worse)  p=3.44e-251 d=+1.99
+  max_deviation    res=3.917 MPC=3.652 (worse)  p=1.08e-32 d=+0.16
 
 Hybrid+Residual vs PID:
-  tracking_rmse    res=1.914 PID=3.675 (better)  p=3.56e-22 d=-0.88
-  attitude_rmse    res=0.109 PID=0.394 (better)  p=7.97e-40 d=-1.28
-  recovery_time    res=14.914 PID=27.910 (better)  p=3.27e-39 d=-0.93
-  control_energy   res=101233.690 PID=80656.409 (worse)  p=2.33e-23 d=+0.85
-  max_deviation    res=4.006 PID=7.353 (better)  p=4.06e-20 d=-0.88
+  tracking_rmse    res=1.875 PID=3.551 (better)  p=8.72e-57 d=-0.90
+  attitude_rmse    res=0.104 PID=0.383 (better)  p=2.18e-87 d=-1.25
+  recovery_time    res=14.722 PID=27.739 (better)  p=7.48e-101 d=-0.93
+  control_energy   res=100936.093 PID=79390.818 (worse)  p=7.53e-67 d=+0.94
+  max_deviation    res=3.917 PID=7.054 (better)  p=6.19e-49 d=-0.86
 
 ========================================================================
 STABILITY ANALYSIS (residual hybrid)
