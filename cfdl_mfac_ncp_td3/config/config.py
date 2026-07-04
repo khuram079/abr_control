@@ -74,6 +74,11 @@ class MFACConfig:
     epsilon: float = 1e-7  # reset threshold
     phi_init: float = 5e-3  # initial diagonal of the pseudo-Jacobian
     u_limit: float = 25.0  # per-channel |Δtau| clip [N or N*m]
+    # Partial-Form Dynamic Linearization (PFDL) control-input length L: the
+    # sliding window of past control increments the pseudo-gradient spans.
+    # L = 1 recovers CFDL; L > 1 gives the control law "memory" of recent
+    # inputs still propagating through the plant (used by PFDLMFAC only).
+    pfdl_L: int = 3
 
 
 @dataclass

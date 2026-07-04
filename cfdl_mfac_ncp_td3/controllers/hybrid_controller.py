@@ -56,6 +56,7 @@ from ..dynamics.remus6dof import jacobian
 from ..observers import DisturbanceObserver, FaultObserver
 from ..benchmark.base import pose_error
 from .mfac import CFDLMFAC
+from .pfdl import PFDLMFAC
 from .supervisor import HybridSupervisor
 
 
@@ -75,7 +76,8 @@ class HybridController:
                  attitude_law: str = "smc",
                  att_kd=(20.0, 30.0, 30.0), att_ks=(8.0, 12.0, 12.0),
                  att_phi: float = 0.1, att_lam: float = 1.5,
-                 trans_damping: float = 0.0):
+                 trans_damping: float = 0.0,
+                 inner_law: str = "cfdl", pfdl_L: int = 3):
         self.cfg = config or default_config()
         self.p = params or REMUSParams()
         # k1[0:3] is the translational outer-loop gain (feasible-velocity
@@ -131,11 +133,22 @@ class HybridController:
         # channels (the previous architecture) for ablation comparison.
         self.attitude_law = attitude_law
         self.mfac_dofs = list(range(6)) if attitude_law == "mfac" else [0, 1, 2]
+        # inner_law selects the dynamic-linearization form of the adaptive core:
+        # "cfdl" (compact form, single pseudo-gradient) or "pfdl" (partial form,
+        # a length-L window of past control increments).  PFDL gives the control
+        # law memory of recent inputs still propagating through the plant, which
+        # curbs the compact-form integrator's surge limit cycle.  CFDL-MFAC
+        # remains the default core; PFDL-MFAC is the drop-in alternative.
+        self.inner_law = inner_law
+        self.pfdl_L = int(pfdl_L)
         self.mfac = []
         for i in self.mfac_dofs:
             mfac_cfg = dataclasses.replace(self.cfg.mfac, phi_init=self.cfg.mfac.phi_init * phi_scale[i])
-            self.mfac.append(CFDLMFAC(1, 1, mfac_cfg,
-                             u_bounds=(np.array([-tau_max[i]]), np.array([tau_max[i]]))))
+            bounds = (np.array([-tau_max[i]]), np.array([tau_max[i]]))
+            if inner_law == "pfdl":
+                self.mfac.append(PFDLMFAC(1, 1, mfac_cfg, u_bounds=bounds, L=self.pfdl_L))
+            else:
+                self.mfac.append(CFDLMFAC(1, 1, mfac_cfg, u_bounds=bounds))
 
         # SMC attitude reaching-law gains (unused when attitude_law="mfac").
         # The sliding-surface slope reuses self.k1[3:] so the same external
@@ -253,7 +266,7 @@ class HybridController:
         for idx, i in enumerate(self.mfac_dofs):
             u = self.mfac[idx].control([nu[i]], [nu_d[i]])[0]
             if self.cfdl_feedforward:
-                phi = float(self.mfac[idx].model.phi[0, 0])
+                phi = self.mfac[idx].gain
                 if abs(phi) > 1e-4:
                     u_ff = self.cfdl_feedforward * self._dnu_d_filt[i] / phi
                     ff_limit = self.ff_cap * self.tau_max[i]

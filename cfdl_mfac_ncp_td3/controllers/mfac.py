@@ -57,6 +57,12 @@ class CFDLMFAC:
     def phi(self) -> np.ndarray:
         return self.model.phi
 
+    @property
+    def gain(self) -> float:
+        """Leading pseudo-Jacobian element (uniform interface with PFDLMFAC)."""
+
+        return float(self.model.phi[0, 0])
+
     def control(self, y: np.ndarray, y_ref: np.ndarray) -> np.ndarray:
         """Compute the control signal for measurement ``y`` and reference ``y_ref``."""
 
