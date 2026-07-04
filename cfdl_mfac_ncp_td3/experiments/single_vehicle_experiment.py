@@ -57,7 +57,10 @@ def _factories(cfg, tuning):
 def run(trials: int, seed: int, tune_budget: int) -> None:
     os.makedirs(RESULTS_DIR, exist_ok=True)
     cfg = default_config()
-    sim = SingleVehicleSimulator(cfg, trajectory=TRAJ, fault_prob=0.6)
+    # Recovery threshold set above typical tracking error so recovery_time
+    # reflects genuine fault recovery, not steady-state error.
+    sim = SingleVehicleSimulator(cfg, trajectory=TRAJ, fault_prob=0.6,
+                                 recovery_threshold=2.5)
 
     _log(f"\n{'='*74}\nFAIR TUNING (identical random search, budget={tune_budget}/controller)\n{'='*74}")
     t0 = time.time()
