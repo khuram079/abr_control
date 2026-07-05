@@ -40,7 +40,8 @@ SEARCH_SPACES = {
     "Hybrid": {"k_outer": (0.4, 2.0, False), "prediction_gain": (0.5, 4.0, False),
               "feedforward_cap": (0.05, 0.6, True),
               "att_lam": (0.4, 2.5, False), "att_kd": (0.4, 2.5, False),
-              "att_ks": (0.3, 3.0, False), "trans_damping": (0.0, 50.0, False)},
+              "att_ks": (0.3, 3.0, False), "trans_damping": (0.0, 50.0, False),
+              "model_ff_gain": (0.3, 1.2, False)},
 }
 
 
@@ -73,7 +74,9 @@ def _build(name: str, params: dict, tau_max):
                                 att_lam=1.5 * params["att_lam"],
                                 att_kd=np.array([20.0, 30.0, 30.0]) * params["att_kd"],
                                 att_ks=np.array([8.0, 12.0, 12.0]) * params["att_ks"],
-                                trans_damping=params["trans_damping"])
+                                trans_damping=params["trans_damping"],
+                                model_feedforward=True,
+                                model_ff_gain=params.get("model_ff_gain", 1.0))
     raise KeyError(name)
 
 

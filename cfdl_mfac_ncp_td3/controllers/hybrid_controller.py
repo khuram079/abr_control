@@ -77,6 +77,7 @@ class HybridController:
                  att_kd=(20.0, 30.0, 30.0), att_ks=(8.0, 12.0, 12.0),
                  att_phi: float = 0.1, att_lam: float = 1.5,
                  trans_damping: float = 0.0,
+                 model_feedforward: bool = False, model_ff_gain: float = 1.0,
                  inner_law: str = "cfdl", pfdl_L: int = 3):
         self.cfg = config or default_config()
         self.p = params or REMUSParams()
@@ -170,6 +171,24 @@ class HybridController:
         # graceful tracking trade-off.  MFAC remains the adaptive core; this is
         # a fixed inner damping loop, not a replacement.
         self.trans_damping = float(trans_damping)
+
+        # Nominal-model (computed-torque) feed-forward on the translational
+        # channels.  MPC's structural advantage is that it optimises over a
+        # horizon using a *plant model*; a purely reactive CFDL-MFAC has no such
+        # preview, so its integrating law has to build up the steady drag/inertia
+        # wrench itself -- which on surge manifests as the +/-33 N limit cycle
+        # that was the entire ~1.5x control-energy gap to MPC.  Here the
+        # nominal REMUS dynamics supply that wrench directly and smoothly:
+        #   tau_ff = M nu_dot_d + C(nu) nu + D(nu) nu + g(eta),
+        # evaluated with the desired body acceleration nu_dot_d (the filtered
+        # rate of the outer-loop velocity command).  CFDL-MFAC is left to adapt
+        # only the *model error* (mass/hydro uncertainty, faults), so the hybrid
+        # gains MPC-like anticipation while keeping its model-free robustness --
+        # MPC degrades when its fixed model is wrong; the adaptive residual does
+        # not.  ``model_ff_gain`` (tuned) scales the trust placed in the nominal
+        # model.  Applied to surge/sway/heave only; attitude keeps the SMC law.
+        self.model_feedforward = bool(model_feedforward)
+        self.model_ff_gain = float(model_ff_gain)
 
         self.td3 = td3_agent
         self.use_observers = use_observers
@@ -273,6 +292,21 @@ class HybridController:
                     u += np.clip(u_ff, -ff_limit, ff_limit)
             tau_mfac[i] = np.clip(u, -self.tau_max[i], self.tau_max[i])
         self._nu_d_prev = nu_d
+
+        # Nominal-model computed-torque feed-forward (translational channels).
+        # tau_ff = M nu_dot_d + C(nu) nu + D(nu) nu + g(eta); nu_dot_d is the
+        # filtered desired body-acceleration.  This supplies the steady
+        # drag/inertia wrench that a reactive MFAC would otherwise integrate up
+        # (the surge limit cycle), so the MFAC loop is left to adapt only the
+        # residual model error.  Added before clipping so it shares the wrench
+        # budget with the adaptive command.
+        if self.model_feedforward:
+            M = self.p.mass_matrix()
+            acc_d = self._dnu_d_filt / dt
+            tau_ff = (M @ acc_d + self.p.coriolis(nu, M) @ nu
+                      + self.p.damping(nu) @ nu + self.p.restoring(eta))
+            tau_mfac[:3] = np.clip(tau_mfac[:3] + self.model_ff_gain * tau_ff[:3],
+                                   -self.tau_max[:3], self.tau_max[:3])
 
         # Velocity-rate damping on the translational channels (breaks the
         # surge integrator limit cycle; inert in steady tracking).

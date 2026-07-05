@@ -30,6 +30,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 from ..config import default_config
 from ..controllers import HybridController
 from ..environment import AUVResidualEnv, AUVEnv
+from ..environment.residual_env import load_strong_baseline
 from ..rl import TD3
 from ..formation import tune_all, build_tuned
 from ..evaluation.single_sim import SingleVehicleSimulator, sv_indicators, SV_INDICATORS
@@ -38,7 +39,6 @@ from .. import analysis as A
 
 RESULTS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "results", "residual_v2")
 CKPT = os.path.join(RESULTS_DIR, "residual_agent.pt")
-STRONG = AUVResidualEnv.STRONG_BASELINE
 RESIDUAL_SCALE = 0.25
 
 
@@ -49,7 +49,7 @@ def _log(m):
 def _hybrid(cfg, agent=None):
     return HybridController(cfg, use_observers=False, use_supervisor=False,
                             td3_agent=agent, residual_rl=agent is not None,
-                            residual_scale=RESIDUAL_SCALE, **STRONG)
+                            residual_scale=RESIDUAL_SCALE, **load_strong_baseline())
 
 
 def run(trials, tune_budget, ckpt=CKPT):

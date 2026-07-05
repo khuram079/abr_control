@@ -15,29 +15,53 @@ easier and safer learning problem than learning a controller from scratch.
 
 from __future__ import annotations
 
+import json
+import os
+
 import numpy as np
 
 from .auv_env import AUVEnv
 from ..controllers import HybridController
 
+#: Single source of truth for the tuned strong-hybrid baseline.  The
+#: ``tune_hybrid_baseline`` experiment re-tunes the hybrid (now including the
+#: nominal-model feed-forward) under the same fair energy-aware objective as the
+#: baselines and writes the resolved kwargs here, so the residual-RL *training*
+#: baseline and the *evaluation* strong hybrid are always the identical
+#: controller.  The hard-coded fallback below is used only if the file is absent.
+BASELINE_JSON = os.path.join(os.path.dirname(os.path.dirname(__file__)),
+                             "results", "residual_v2", "hybrid_baseline.json")
+
+_FALLBACK_BASELINE = dict(
+    k_outer=0.507, cfdl_feedforward=1.705, feedforward_cap=0.146,
+    att_lam=1.5 * 2.429, att_kd=[20.0 * 1.581, 30.0 * 1.581, 30.0 * 1.581],
+    att_ks=[8.0 * 0.999, 12.0 * 0.999, 12.0 * 0.999], trans_damping=12.084,
+    model_feedforward=True, model_ff_gain=1.0,
+)
+
+
+def load_strong_baseline() -> dict:
+    """Load the tuned strong-hybrid kwargs (from JSON if present)."""
+
+    if os.path.exists(BASELINE_JSON):
+        with open(BASELINE_JSON) as f:
+            return json.load(f)
+    return dict(_FALLBACK_BASELINE)
+
 
 class AUVResidualEnv(AUVEnv):
     """AUV tracking env where the action is a residual on the MFAC command."""
 
-    #: strong hybrid baseline (CFDL-MFAC + SMC attitude + damping), tuned params
-    #: from the v4-final fair-tuning run -- the residual policy learns a bounded
-    #: correction on top of THIS competitive controller, not the untuned default.
-    STRONG_BASELINE = dict(
-        k_outer=0.507, cfdl_feedforward=1.705, feedforward_cap=0.146,
-        att_lam=1.5 * 2.429, att_kd=np.array([20.0, 30.0, 30.0]) * 1.581,
-        att_ks=np.array([8.0, 12.0, 12.0]) * 0.999, trans_damping=12.084,
-    )
+    #: strong hybrid baseline (CFDL-MFAC + model feed-forward + SMC attitude +
+    #: damping); the residual policy learns a bounded correction on top of THIS
+    #: competitive, fairly-tuned controller, not the untuned default.
+    STRONG_BASELINE = load_strong_baseline()
 
     def __init__(self, *args, residual_scale: float = 0.3,
                  baseline_kwargs: dict | None = None, **kwargs):
         self.residual_scale = float(residual_scale)
         self.baseline_kwargs = baseline_kwargs if baseline_kwargs is not None \
-            else dict(self.STRONG_BASELINE)
+            else load_strong_baseline()
         super().__init__(*args, **kwargs)
 
     def _make_baseline(self) -> HybridController:
