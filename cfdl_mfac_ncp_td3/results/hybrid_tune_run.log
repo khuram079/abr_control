@@ -1,0 +1,23 @@
+========================================================================
+RE-TUNE STRONG HYBRID (model feed-forward), budget=60
+========================================================================
+best energy-aware score = 0.5628
+best params = {'k_outer': 0.838, 'trans_kp': 176.092, 'mfac_trim_cap': 0.572, 'trans_damping': 2.536, 'att_lam': 2.216, 'att_kd': 0.525, 'att_ks': 1.328}
+Resolved strong-hybrid kwargs -> /home/user/abr_control/cfdl_mfac_ncp_td3/results/residual_v2/hybrid_baseline.json
+{
+  "k_outer": 0.8381585577592916,
+  "trans_kp": 176.09198606565542,
+  "mfac_trim_cap": 0.5719007134710454,
+  "trans_damping": 2.536342045224955,
+  "att_lam": 3.3240516305124386,
+  "att_kd": [
+    10.497494367214216,
+    15.746241550821322,
+    15.746241550821322
+  ],
+  "att_ks": [
+    10.624642979515214,
+    15.93696446927282,
+    15.93696446927282
+  ]
+}
