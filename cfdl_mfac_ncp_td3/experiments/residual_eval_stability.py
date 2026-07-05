@@ -4,7 +4,7 @@ Run AFTER experiments.train_residual_500.  Loads the trained residual policy,
 then:
 
 1. Monte-Carlo (5 indicators) comparing the strong hybrid, the residual hybrid,
-   and the fairly-tuned baselines (SMC/MPC/PID/Fuzzy); paired significance of
+   and the fairly-tuned baselines (MPC/PID/Fuzzy); paired significance of
    the residual hybrid vs the strong hybrid (does RL help?), vs MPC and vs PID.
 2. Controller **stability analysis** on the residual hybrid: SMC-attitude
    Lyapunov trace, CFDL-MFAC bounded pseudo-gradient, input-to-state stability
@@ -69,7 +69,6 @@ def run(trials, tune_budget, ckpt=CKPT):
     factories = {
         "Hybrid (strong)": lambda: _hybrid(cfg, None),
         "Hybrid+Residual": lambda: _hybrid(cfg, agent),
-        "SMC": lambda: build_tuned("SMC", tuning, tm),
         "MPC": lambda: build_tuned("MPC", tuning, tm),
         "PID": lambda: build_tuned("PID", tuning, tm),
         "Fuzzy": lambda: build_tuned("Fuzzy", tuning, tm),
@@ -115,7 +114,7 @@ def run(trials, tune_budget, ckpt=CKPT):
     pg = A.pseudo_gradient_bound(fac(), current_speed=0.3)
     iss = A.iss_analysis(fac, disturbances=(0.0, 0.2, 0.4, 0.6, 0.8))
     roa = A.region_of_attraction(fac, trajectory="setpoint")
-    mc = A.monte_carlo_stability(fac, n_trials=min(trials, 200))
+    mc = A.monte_carlo_stability(fac, n_trials=min(trials, 500))
 
     _log(f"1. Lyapunov (SMC attitude): V0={ly['V0']:.3f} -> V_final={ly['V_final']:.4f} "
          f"(decay {100*(1-ly['decay_ratio']):.1f}%), s_ultimate={ly['s_ultimate_bound']:.3f}, "
@@ -182,8 +181,9 @@ def _plots(cfg, data, names, ly, iss, roa):
 def _report(out):
     inds = out["indicators"] = list(SV_INDICATORS)
     L = ["# Residual-RL Hybrid + Stability Analysis\n",
-         f"500-episode residual TD3 trained on the strong hybrid (CFDL-MFAC + SMC "
-         f"attitude + damping); {out['trials']}-trial Monte-Carlo + stability analysis.\n",
+         f"1000-episode residual TD3 trained on the strong hybrid (CFDL-MFAC + SMC "
+         f"attitude + damping); {out['trials']}-trial Monte-Carlo + stability analysis. "
+         f"Baseline comparison: MPC, PID, Fuzzy-PID (SMC excluded).\n",
          "## Five indicators (mean ± std)\n",
          "| Controller | " + " | ".join(inds) + " |",
          "|" + "---|" * (len(inds) + 1)]

@@ -1,4 +1,4 @@
-"""Train the residual-RL policy (500 episodes) on top of the strong hybrid.
+"""Train the residual-RL policy (1000 episodes) on top of the strong hybrid.
 
 The learned TD3 policy outputs a bounded correction added to the strong
 CFDL-MFAC + SMC-attitude + damping controller (see AUVResidualEnv.STRONG_BASELINE).
@@ -33,11 +33,11 @@ def main():
     def make_env(**kw):
         return AUVResidualEnv(residual_scale=RESIDUAL_SCALE, **kw)
 
-    print(f"{'='*72}\nTRAIN RESIDUAL RL (500 episodes) on the strong hybrid baseline\n"
+    print(f"{'='*72}\nTRAIN RESIDUAL RL (1000 episodes) on the strong hybrid baseline\n"
           f"   residual_scale={RESIDUAL_SCALE}\n{'='*72}", flush=True)
     t0 = time.time()
     out = train_td3(trajectory="sinusoidal", config=cfg, fault_prob=0.2, curriculum=True,
-                    max_episodes=500, eval_every_episodes=20, make_env=make_env,
+                    max_episodes=1000, eval_every_episodes=20, make_env=make_env,
                     seed=0, verbose=True)
     dt = time.time() - t0
     agent, hist = out["agent"], out["history"]
@@ -51,7 +51,7 @@ def main():
         k = max(1, len(ep) // 40)
         ax[0].plot(np.arange(len(ep) - k + 1) + k // 2,
                    np.convolve(ep, np.ones(k) / k, mode="valid"), "C0", lw=2)
-    ax[0].set_title("Residual-RL training return (500 ep)"); ax[0].set_xlabel("episode")
+    ax[0].set_title("Residual-RL training return (1000 ep)"); ax[0].set_xlabel("episode")
     if hist["eval_return"]:
         ev = np.array(hist["eval_return"])
         ax[1].plot(ev[:, 0], ev[:, 1], "C2-o", ms=3)
