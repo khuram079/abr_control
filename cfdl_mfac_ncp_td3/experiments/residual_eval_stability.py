@@ -116,7 +116,7 @@ def run(trials, tune_budget, ckpt=CKPT):
     roa = A.region_of_attraction(fac, trajectory="setpoint")
     mc = A.monte_carlo_stability(fac, n_trials=min(trials, 500))
 
-    _log(f"1. Lyapunov (SMC attitude): V0={ly['V0']:.3f} -> V_final={ly['V_final']:.4f} "
+    _log(f"1. Lyapunov (SMC attitude): V0={ly['V0']:.3f} -> V_settled={ly['V_settled']:.4f} "
          f"(decay {100*(1-ly['decay_ratio']):.1f}%), s_ultimate={ly['s_ultimate_bound']:.3f}, "
          f"converges={ly['converges']}")
     _log(f"2. CFDL-MFAC pseudo-gradient: bounded={pg['bounded']} sign_definite={pg['sign_definite']} "
@@ -181,8 +181,9 @@ def _plots(cfg, data, names, ly, iss, roa):
 def _report(out):
     inds = out["indicators"] = list(SV_INDICATORS)
     L = ["# Residual-RL Hybrid + Stability Analysis\n",
-         f"1000-episode residual TD3 trained on the strong hybrid (CFDL-MFAC + SMC "
-         f"attitude + damping); {out['trials']}-trial Monte-Carlo + stability analysis. "
+         f"1000-episode residual TD3 trained on the strong hybrid (proportional "
+         f"velocity + bounded CFDL-MFAC adaptive trim + SMC attitude); "
+         f"{out['trials']}-trial Monte-Carlo + stability analysis. "
          f"Baseline comparison: MPC, PID, Fuzzy-PID (SMC excluded).\n",
          "## Five indicators (mean ± std)\n",
          "| Controller | " + " | ".join(inds) + " |",
@@ -198,8 +199,9 @@ def _report(out):
     L.append("\n## Stability analysis\n")
     L.append(f"1. **Lyapunov (SMC attitude)**: V decays "
              f"{100*(1-st['lyapunov']['decay_ratio']):.1f}% (V0={st['lyapunov']['V0']:.3f} → "
-             f"{st['lyapunov']['V_final']:.4f}); sliding-surface ultimate bound "
-             f"{st['lyapunov']['s_ultimate_bound']:.3f} → **practical sliding-mode stability**.")
+             f"settled {st['lyapunov']['V_settled']:.4f}); sliding-surface ultimate bound "
+             f"{st['lyapunov']['s_ultimate_bound']:.3f}, converges="
+             f"{st['lyapunov']['converges']} → **practical sliding-mode stability**.")
     L.append(f"2. **CFDL-MFAC BIBO condition**: pseudo-gradient bounded="
              f"{st['pseudo_gradient']['bounded']}, sign-definite="
              f"{st['pseudo_gradient']['sign_definite']} (|phi| ≤ "

@@ -101,16 +101,28 @@ def lyapunov_smc(controller, **kw) -> dict:
     s = tr["s"]
     V = 0.5 * s ** 2
     q = max(1, len(s) // 4)
+    # Convergence is judged on the *settled* Lyapunov level, not the single last
+    # sample.  A practical (boundary-layer) sliding mode reaches a small bounded
+    # set in which the surface energy ripples with a few-sample period; V[-1]
+    # then depends on which phase of that ripple the run happens to end on and
+    # can land on a local peak even when the system has long since settled.  The
+    # median of the final quarter is a phase-robust estimate of the settled
+    # level (and the ultimate bound on |s| likewise), so the decay ratio and the
+    # convergence flag measure "has V reached a small set", not a lucky/unlucky
+    # terminal sample.
+    V_settled = float(np.median(V[-q:]))
+    s_bound = float(np.median(np.abs(s[-q:])))
     # Smoothed V trend (a coupled loop makes the raw signal noisy).
     win = max(1, len(V) // 25)
     Vs = np.convolve(V, np.ones(win) / win, mode="valid")
     smoothed_decreasing = float(np.mean(np.diff(Vs) <= 1e-9))
     return {"V": V, "s": s,
-            "V0": float(V[0]), "V_final": float(V[-1]), "V_max": float(V.max()),
-            "decay_ratio": float(V[-1] / (V.max() + 1e-12)),
+            "V0": float(V[0]), "V_final": float(V[-1]), "V_settled": V_settled,
+            "V_max": float(V.max()),
+            "decay_ratio": float(V_settled / (V.max() + 1e-12)),
             "smoothed_decreasing_frac": smoothed_decreasing,
-            "s_ultimate_bound": float(np.mean(s[-q:])),
-            "converges": bool(V[-1] < 0.3 * V.max()), "dt": tr["dt"]}
+            "s_ultimate_bound": s_bound,
+            "converges": bool(V_settled < 0.3 * V.max()), "dt": tr["dt"]}
 
 
 def pseudo_gradient_bound(controller, **kw) -> dict:
