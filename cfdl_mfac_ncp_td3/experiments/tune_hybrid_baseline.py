@@ -1,10 +1,11 @@
-"""Fairly re-tune the strong hybrid baseline (with the nominal-model feed-forward).
+"""Fairly re-tune the strong hybrid baseline (proportional + adaptive-trim law).
 
 Runs the same disclosed, energy-aware random search used for every baseline
-(:mod:`cfdl_mfac_ncp_td3.formation.tuning`) on the hybrid -- now including the
-computed-torque ``model_ff_gain`` and re-optimising ``trans_damping`` around it
--- and writes the resolved controller kwargs to ``hybrid_baseline.json``.  Both
-the residual-RL training environment and the evaluation load that file, so the
+(:mod:`cfdl_mfac_ncp_td3.formation.tuning`) on the hybrid -- now over the
+proportional velocity gain ``trans_kp`` and the bounded CFDL-MFAC trim cap
+``mfac_trim_cap`` that replace the pure integrating MFAC surge loop -- and
+writes the resolved controller kwargs to ``hybrid_baseline.json``.  Both the
+residual-RL training environment and the evaluation load that file, so the
 training baseline and the evaluated strong hybrid are the identical, freshly
 and fairly tuned controller.
 
@@ -31,14 +32,12 @@ def resolve(bp: dict) -> dict:
 
     return dict(
         k_outer=float(bp["k_outer"]),
-        cfdl_feedforward=float(bp["prediction_gain"]),
-        feedforward_cap=float(bp["feedforward_cap"]),
+        trans_kp=float(bp["trans_kp"]),
+        mfac_trim_cap=float(bp["mfac_trim_cap"]),
+        trans_damping=float(bp["trans_damping"]),
         att_lam=float(1.5 * bp["att_lam"]),
         att_kd=(np.array([20.0, 30.0, 30.0]) * bp["att_kd"]).tolist(),
         att_ks=(np.array([8.0, 12.0, 12.0]) * bp["att_ks"]).tolist(),
-        trans_damping=float(bp["trans_damping"]),
-        model_feedforward=True,
-        model_ff_gain=float(bp["model_ff_gain"]),
     )
 
 
@@ -49,7 +48,7 @@ def main(argv=None):
     args = p.parse_args(argv)
 
     cfg = default_config()
-    print(f"{'='*72}\nRE-TUNE STRONG HYBRID (model feed-forward), budget={args.budget}\n"
+    print(f"{'='*72}\nRE-TUNE STRONG HYBRID (proportional + adaptive trim), budget={args.budget}\n"
           f"{'='*72}", flush=True)
     rep = tune_controller("Hybrid", n_samples=args.budget, seed=args.seed, cfg=cfg)
     print(f"best energy-aware score = {rep['best_score']:.4f}", flush=True)

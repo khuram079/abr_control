@@ -33,10 +33,9 @@ BASELINE_JSON = os.path.join(os.path.dirname(os.path.dirname(__file__)),
                              "results", "residual_v2", "hybrid_baseline.json")
 
 _FALLBACK_BASELINE = dict(
-    k_outer=0.507, cfdl_feedforward=1.705, feedforward_cap=0.146,
+    k_outer=0.507, trans_kp=150.0, mfac_trim_cap=0.5, trans_damping=0.0,
     att_lam=1.5 * 2.429, att_kd=[20.0 * 1.581, 30.0 * 1.581, 30.0 * 1.581],
-    att_ks=[8.0 * 0.999, 12.0 * 0.999, 12.0 * 0.999], trans_damping=12.084,
-    model_feedforward=True, model_ff_gain=1.0,
+    att_ks=[8.0 * 0.999, 12.0 * 0.999, 12.0 * 0.999],
 )
 
 

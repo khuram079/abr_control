@@ -37,11 +37,10 @@ SEARCH_SPACES = {
     "Fuzzy": {"ke": (0.4, 2.5, False), "e_width": (0.5, 2.0, False),
               "edot_width": (0.5, 2.0, False)},
     "Backstepping": {"k1": (0.4, 3.0, False), "k2": (0.4, 3.0, False)},
-    "Hybrid": {"k_outer": (0.4, 2.0, False), "prediction_gain": (0.5, 4.0, False),
-              "feedforward_cap": (0.05, 0.6, True),
+    "Hybrid": {"k_outer": (0.4, 2.0, False), "trans_kp": (50.0, 300.0, True),
+              "mfac_trim_cap": (0.1, 0.6, False), "trans_damping": (0.0, 20.0, False),
               "att_lam": (0.4, 2.5, False), "att_kd": (0.4, 2.5, False),
-              "att_ks": (0.3, 3.0, False), "trans_damping": (0.0, 50.0, False),
-              "model_ff_gain": (0.3, 1.2, False)},
+              "att_ks": (0.3, 3.0, False)},
 }
 
 
@@ -69,14 +68,12 @@ def _build(name: str, params: dict, tau_max):
         cfg = default_config()
         return HybridController(cfg, use_observers=False, use_supervisor=False,
                                 k_outer=params["k_outer"],
-                                cfdl_feedforward=params["prediction_gain"],
-                                feedforward_cap=params["feedforward_cap"],
+                                trans_kp=params["trans_kp"],
+                                mfac_trim_cap=params["mfac_trim_cap"],
+                                trans_damping=params["trans_damping"],
                                 att_lam=1.5 * params["att_lam"],
                                 att_kd=np.array([20.0, 30.0, 30.0]) * params["att_kd"],
-                                att_ks=np.array([8.0, 12.0, 12.0]) * params["att_ks"],
-                                trans_damping=params["trans_damping"],
-                                model_feedforward=True,
-                                model_ff_gain=params.get("model_ff_gain", 1.0))
+                                att_ks=np.array([8.0, 12.0, 12.0]) * params["att_ks"])
     raise KeyError(name)
 
 

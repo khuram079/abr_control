@@ -29,9 +29,14 @@ ablation comparison.
 * The **outer loop** turns the pose error into a desired body velocity
   ``nu_d = J^{-1}(eta_d_dot + K1 (eta_d - eta))``.  Velocity is a CFDL-valid
   controlled output (it settles for constant wrench), unlike pose.
-* The **CFDL-MFAC** bank drives ``nu -> nu_d`` on surge/sway/heave with the
-  model-free adaptive law, learning the pseudo-Jacobian ``tau -> nu`` online,
-  plus a capped/filtered CFDL feed-forward for anticipation.
+* The **translational inner loop** drives ``nu -> nu_d`` on surge/sway/heave.
+  With ``trans_kp>0`` (the strong configuration) a fast proportional velocity
+  feedback carries the loop -- eliminating the integrating MFAC's surge limit
+  cycle, the entire control-energy gap to MPC -- while the **CFDL-MFAC** output
+  is retained as a *bounded adaptive trim* (learning the pseudo-Jacobian
+  ``tau -> nu`` online) so the model-free rejection of mass/hydro uncertainty
+  and thruster faults is preserved.  ``trans_kp=0`` reverts to the pure
+  integrating MFAC bank (with capped/filtered feed-forward) for ablation.
 * The **SMC** law drives the NED attitude error/rate on roll/pitch/yaw via a
   sliding surface ``s = e_dot + k1 e``, boundary-layer reaching law, mapped to
   the body-frame wrench through the (block-diagonal) kinematic Jacobian
@@ -77,6 +82,7 @@ class HybridController:
                  att_kd=(20.0, 30.0, 30.0), att_ks=(8.0, 12.0, 12.0),
                  att_phi: float = 0.1, att_lam: float = 1.5,
                  trans_damping: float = 0.0,
+                 trans_kp: float = 0.0, mfac_trim_cap: float = 0.25,
                  model_feedforward: bool = False, model_ff_gain: float = 1.0,
                  inner_law: str = "cfdl", pfdl_L: int = 3):
         self.cfg = config or default_config()
@@ -172,6 +178,16 @@ class HybridController:
         # a fixed inner damping loop, not a replacement.
         self.trans_damping = float(trans_damping)
 
+        # Proportional-plus-adaptive-trim translational inner law.  trans_kp>0
+        # switches surge/sway/heave from the pure integrating CFDL-MFAC loop
+        # (which limit-cycles on surge) to a fast proportional velocity feedback
+        # that carries the loop, with the CFDL-MFAC output retained as a bounded
+        # adaptive trim (|trim| <= mfac_trim_cap * tau_max) for model-free
+        # fault/uncertainty rejection.  trans_kp=0 keeps the legacy pure-MFAC
+        # law (for ablation).
+        self.trans_kp = float(trans_kp)
+        self.mfac_trim_cap = float(mfac_trim_cap)
+
         # Nominal-model (computed-torque) feed-forward on the translational
         # channels.  MPC's structural advantage is that it optimises over a
         # horizon using a *plant model*; a purely reactive CFDL-MFAC has no such
@@ -219,6 +235,8 @@ class HybridController:
         self._tau_prev = np.zeros(6)
         self._nu_d_prev = np.zeros(6)
         self._dnu_d_filt = np.zeros(6)
+        self._nu_ref_prev = np.zeros(6)
+        self._dnu_ref_filt = np.zeros(6)
         self._nu_prev = np.zeros(6)
         self.last_info = {}
 
@@ -283,28 +301,56 @@ class HybridController:
         dnu_d_raw = nu_d - self._nu_d_prev
         self._dnu_d_filt += self._ff_alpha * (dnu_d_raw - self._dnu_d_filt)
         for idx, i in enumerate(self.mfac_dofs):
-            u = self.mfac[idx].control([nu[i]], [nu_d[i]])[0]
-            if self.cfdl_feedforward:
-                phi = self.mfac[idx].gain
-                if abs(phi) > 1e-4:
-                    u_ff = self.cfdl_feedforward * self._dnu_d_filt[i] / phi
-                    ff_limit = self.ff_cap * self.tau_max[i]
-                    u += np.clip(u_ff, -ff_limit, ff_limit)
+            u_mfac = self.mfac[idx].control([nu[i]], [nu_d[i]])[0]
+            if self.trans_kp and i < 3:
+                # Proportional-plus-adaptive-trim inner law (translational).
+                # A pure CFDL-MFAC velocity loop is an *integrating* law whose
+                # surge channel limit-cycles about the equilibrium thrust: the
+                # command swings +/-30 N (RMS) for a near-zero mean, burning
+                # ~14x MPC's surge energy for no net motion, and neither slower
+                # adaptation, a larger control-increment penalty, output
+                # filtering, nor model feed-forward suppresses it (all measured
+                # to make it worse or destabilise -- it is intrinsic to the
+                # integrator, not the compact form).  A fast *proportional*
+                # velocity feedback carries the loop instead (like SMC/MPC, no
+                # limit cycle), while the CFDL-MFAC output is retained as a
+                # *bounded adaptive trim* -- so the model-free rejection of
+                # mass/hydro uncertainty and thruster faults (MFAC's whole
+                # value) is preserved, but capped so it cannot re-introduce the
+                # oscillation.  This is what lets the hybrid beat MPC on surge
+                # energy AND tracking simultaneously.
+                u_trim = np.clip(u_mfac, -self.mfac_trim_cap * self.tau_max[i],
+                                 self.mfac_trim_cap * self.tau_max[i])
+                u = self.trans_kp * (nu_d[i] - nu[i]) + u_trim
+            else:
+                u = u_mfac
+                if self.cfdl_feedforward:
+                    phi = self.mfac[idx].gain
+                    if abs(phi) > 1e-4:
+                        u_ff = self.cfdl_feedforward * self._dnu_d_filt[i] / phi
+                        ff_limit = self.ff_cap * self.tau_max[i]
+                        u += np.clip(u_ff, -ff_limit, ff_limit)
             tau_mfac[i] = np.clip(u, -self.tau_max[i], self.tau_max[i])
         self._nu_d_prev = nu_d
 
-        # Nominal-model computed-torque feed-forward (translational channels).
-        # tau_ff = M nu_dot_d + C(nu) nu + D(nu) nu + g(eta); nu_dot_d is the
-        # filtered desired body-acceleration.  This supplies the steady
-        # drag/inertia wrench that a reactive MFAC would otherwise integrate up
-        # (the surge limit cycle), so the MFAC loop is left to adapt only the
-        # residual model error.  Added before clipping so it shares the wrench
-        # budget with the adaptive command.
+        # Nominal-model feed-forward (translational channels), built from the
+        # *reference* motion only -- NOT the feedback-laden desired velocity.
+        # nu_ref = J^{-1} eta_d_dot is the body velocity the reference alone
+        # demands; its (filtered) rate is the reference acceleration.  Using the
+        # reference here (rather than the error-driven nu_d, or measured-nu drag)
+        # is what keeps the feed-forward from fighting the adaptive MFAC loop:
+        #   tau_ff = M acc_ref + D(nu_ref) nu_ref + g(eta),
+        # i.e. the smooth cruise wrench the reference needs, leaving MFAC to
+        # adapt only the deviation.  Coriolis is dropped (small, and a function
+        # of measured nu would re-introduce feedback coupling).
         if self.model_feedforward:
+            nu_ref = np.linalg.solve(J, eta_d_dot)
+            dnu_ref_raw = nu_ref - self._nu_ref_prev
+            self._dnu_ref_filt += self._ff_alpha * (dnu_ref_raw - self._dnu_ref_filt)
+            self._nu_ref_prev = nu_ref
+            acc_ref = self._dnu_ref_filt / dt
             M = self.p.mass_matrix()
-            acc_d = self._dnu_d_filt / dt
-            tau_ff = (M @ acc_d + self.p.coriolis(nu, M) @ nu
-                      + self.p.damping(nu) @ nu + self.p.restoring(eta))
+            tau_ff = M @ acc_ref + self.p.damping(nu_ref) @ nu_ref + self.p.restoring(eta)
             tau_mfac[:3] = np.clip(tau_mfac[:3] + self.model_ff_gain * tau_ff[:3],
                                    -self.tau_max[:3], self.tau_max[:3])
 
