@@ -11,6 +11,9 @@ from .trajectories import (
     HelixTrajectory,
     WaypointTrajectory,
     LawnmowerTrajectory,
+    SquareTrajectory,
+    LemniscateTrajectory,
+    CircleTrajectory,
     make_trajectory,
     TRAJECTORY_REGISTRY,
 )
@@ -22,6 +25,9 @@ __all__ = [
     "HelixTrajectory",
     "WaypointTrajectory",
     "LawnmowerTrajectory",
+    "SquareTrajectory",
+    "LemniscateTrajectory",
+    "CircleTrajectory",
     "make_trajectory",
     "TRAJECTORY_REGISTRY",
 ]

@@ -128,12 +128,96 @@ class LawnmowerTrajectory(Trajectory):
         return eta_d, eta_d_dot
 
 
+class SquareTrajectory(Trajectory):
+    """Square path with a coordinated yaw manoeuvre (Scenario 1).
+
+    Piecewise-defined over 0-40 s (held constant afterwards to fill ``duration``);
+    the reference velocity changes suddenly at each corner, exercising the
+    controller's response to abrupt set-point-velocity transitions.  Planar:
+    depth/roll/pitch references are zero.
+    """
+
+    name = "square"
+
+    def __init__(self, duration: float = 60.0):
+        self.duration = duration
+
+    def reference(self, t: float):
+        tc = min(t, 40.0)
+        if tc < 10.0:
+            x, dx = 0.5 * tc, 0.5
+            y, dy = 0.0, 0.0
+            psi, dpsi = 0.0, 0.0
+        elif tc < 20.0:
+            x, dx = 5.0, 0.0
+            y, dy = 0.5 * (tc - 10.0), 0.5
+            psi, dpsi = np.pi * (tc - 10.0) / 15.0, np.pi / 15.0
+        elif tc < 30.0:
+            x, dx = 5.0 - 0.5 * (tc - 20.0), -0.5
+            y, dy = 5.0, 0.0
+            psi, dpsi = 2.0 * np.pi / 3.0, 0.0
+        else:
+            x, dx = 0.0, 0.0
+            y, dy = 5.0 - 0.5 * (tc - 30.0), -0.5
+            psi = 2.0 * np.pi / 3.0 + (np.pi / 6.0) * np.sin(np.pi * (tc - 30.0) / 6.0)
+            dpsi = (np.pi / 6.0) * (np.pi / 6.0) * np.cos(np.pi * (tc - 30.0) / 6.0)
+        if t >= 40.0:  # hold final pose
+            dx = dy = dpsi = 0.0
+        eta_d = np.array([x, y, 0.0, 0.0, 0.0, psi])
+        eta_d_dot = np.array([dx, dy, 0.0, 0.0, 0.0, dpsi])
+        return eta_d, eta_d_dot
+
+
+class LemniscateTrajectory(Trajectory):
+    """Figure-of-eight (lemniscate) path (Scenario 2). Planar."""
+
+    name = "lemniscate"
+
+    def __init__(self, duration: float = 60.0):
+        self.duration = duration
+
+    def reference(self, t: float):
+        x = 2.0 * np.sin(np.pi * t / 20.0)
+        y = 2.0 * np.sin(np.pi * t / 10.0)
+        psi = np.pi * t / 15.0
+        dx = 2.0 * (np.pi / 20.0) * np.cos(np.pi * t / 20.0)
+        dy = 2.0 * (np.pi / 10.0) * np.cos(np.pi * t / 10.0)
+        dpsi = np.pi / 15.0
+        eta_d = np.array([x, y, 0.0, 0.0, 0.0, psi])
+        eta_d_dot = np.array([dx, dy, 0.0, 0.0, 0.0, dpsi])
+        return eta_d, eta_d_dot
+
+
+class CircleTrajectory(Trajectory):
+    """Circular path (Scenario 3). Planar."""
+
+    name = "circle"
+
+    def __init__(self, radius: float = 3.0, duration: float = 60.0):
+        self.r = radius
+        self.duration = duration
+
+    def reference(self, t: float):
+        x = self.r * np.cos(np.pi * t / 20.0)
+        y = self.r * np.sin(np.pi * t / 20.0)
+        psi = np.pi * t / 10.0
+        dx = -self.r * (np.pi / 20.0) * np.sin(np.pi * t / 20.0)
+        dy = self.r * (np.pi / 20.0) * np.cos(np.pi * t / 20.0)
+        dpsi = np.pi / 10.0
+        eta_d = np.array([x, y, 0.0, 0.0, 0.0, psi])
+        eta_d_dot = np.array([dx, dy, 0.0, 0.0, 0.0, dpsi])
+        return eta_d, eta_d_dot
+
+
 TRAJECTORY_REGISTRY = {
     "setpoint": SetpointTrajectory,
     "sinusoidal": SinusoidalTrajectory,
     "helix": HelixTrajectory,
     "waypoint": WaypointTrajectory,
     "lawnmower": LawnmowerTrajectory,
+    "square": SquareTrajectory,
+    "lemniscate": LemniscateTrajectory,
+    "circle": CircleTrajectory,
 }
 
 
