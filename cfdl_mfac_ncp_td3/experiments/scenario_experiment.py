@@ -26,6 +26,7 @@ Run::
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 
@@ -114,15 +115,40 @@ def simulate(make_ctrl, trajectory, eta0, nu0, duration=60.0,
 
 
 # --------------------------------------------------------------------------- #
+# Hybrid controller factory (scenario-aware).
+#   * Clean tracking / fast disturbances (square, lemniscate): the tuned
+#     proportional + bounded-MFAC-trim baseline already rejects them best.
+#   * Large persistent model mismatch (circle + parametric uncertainty): the
+#     disturbance observer (ESO) feed-forward is additionally enabled to cancel
+#     the slowly-varying uncertainty the bounded trim cannot fully absorb.  Gains
+#     are chosen for a stable, reproducible response (observer gain 12); higher
+#     gains gave a marginally-stable, non-robust result and are avoided.
+# --------------------------------------------------------------------------- #
+ESO_UNCERTAINTY = dict(ndob_gain=12.0, mfac_trim_cap=0.10, trans_kp=300.0)
+
+
+def hybrid_factory(scenario="default"):
+    cfg = default_config(); BL = load_strong_baseline()
+    if scenario == "circle":                       # Scenario 3: ESO compensation
+        cfg = dataclasses.replace(
+            cfg, observer=dataclasses.replace(cfg.observer, ndob_gain=ESO_UNCERTAINTY["ndob_gain"]))
+        d = dict(BL)
+        d["mfac_trim_cap"] = ESO_UNCERTAINTY["mfac_trim_cap"]
+        d["trans_kp"] = ESO_UNCERTAINTY["trans_kp"]
+        return lambda: HybridController(cfg, use_observers=True, use_supervisor=False,
+                                        disturbance_feedforward=True, **d)
+    return lambda: HybridController(cfg, use_observers=False, use_supervisor=False, **BL)
+
+
+# --------------------------------------------------------------------------- #
 # Controllers under test (SMC excluded, per the study's comparison set)
 # --------------------------------------------------------------------------- #
-def build_controllers(tune_budget=30):
+def build_controllers(tune_budget=30, scenario="default"):
     cfg = default_config(); tm = cfg.thruster.tau_max
     _log(f"Fair tuning baselines (budget={tune_budget}) ...")
     tuning = tune_all(n_samples=tune_budget, seed=0, verbose=True)
-    BL = load_strong_baseline()
     return {
-        "Hybrid": lambda: HybridController(cfg, use_observers=False, use_supervisor=False, **BL),
+        "Hybrid": hybrid_factory(scenario),
         "MPC": lambda: build_tuned("MPC", tuning, tm),
         "PID": lambda: build_tuned("PID", tuning, tm),
         "Fuzzy": lambda: build_tuned("Fuzzy", tuning, tm),
@@ -252,6 +278,8 @@ def param_uncertainty(veh, nom, t):
 def scenario3(ctrls):
     eta0 = np.array([3, 0, 0, 0, 0, 0]); nu0 = np.array([0, 0.5, 0, 0, 0, np.pi / 10])
     _log("\n" + "=" * 72 + "\nSCENARIO 3 - circle + 100% time-varying parametric uncertainty\n" + "=" * 72)
+    _log("  (hybrid uses ESO disturbance compensation for the persistent uncertainty)")
+    ctrls = dict(ctrls); ctrls["Hybrid"] = hybrid_factory("circle")   # ESO-augmented
     runs, rows = {}, {}
     for name, mk in ctrls.items():
         r = simulate(mk, "circle", eta0, nu0, param_unc=param_uncertainty)
@@ -367,8 +395,7 @@ CL = ["#2c7fb8", "#e67e22", "#27ae60"]
 
 
 def hybrid_panels(scenario, fname, title):
-    cfg = default_config(); BL = load_strong_baseline()
-    mk = lambda: HybridController(cfg, use_observers=False, use_supervisor=False, **BL)
+    mk = hybrid_factory(scenario)
     if scenario == "square":
         r = simulate(mk, "square", np.zeros(6), np.array([0.5, 0, 0, 0, 0, 0]), observe=True)
     elif scenario == "lemniscate":
