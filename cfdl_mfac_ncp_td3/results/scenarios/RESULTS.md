@@ -26,19 +26,7 @@ Position RMSE [m] per velocity-measurement SNR (position SNR = 80 dB):
 
 | Controller | pos RMSE | yaw RMSE | energy |
 |---|---|---|---|
-| Hybrid | 3.3875 | 0.0602 | 258027.4 |
+| Hybrid | 2.8898 | 0.0649 | 251685.2 |
 | MPC | 3.4377 | 0.0513 | 269173.9 |
 | PID | 5.6755 | 0.2785 | 231992.0 |
 | Fuzzy | 4.7455 | 0.2607 | 228013.8 |
-
-## Per-scenario 6-panel diagnostics (hybrid controller)
-
-For each scenario a six-panel figure of the hybrid controller is provided
-(`hybrid_scenario{1,2,3}_panels.png`):
-(a) reference and response in the xy-plane, (b) tracking errors (x, y, wrapped
-yaw), (c) AUV body-frame velocity (u, v, r), (d) control input (surge/sway/yaw),
-(e) the total (incremental) disturbance estimate f̂(k) from the ESO/NDOB, and
-(f) the external disturbances. In Scenario 2 the estimate f̂(k) tracks the
-injected disturbance (e.g. the yaw channel settles at the ~4 N·m step), and in
-Scenario 3 f̂(k) captures the time-varying parametric-uncertainty mismatch
-(no external disturbance is applied, so panel (f) is zero).
