@@ -22,11 +22,11 @@ Position RMSE [m] per velocity-measurement SNR (position SNR = 80 dB):
 | PID | 5.5444 | 1.4242 | 7.3762 | 1.7481 | 174188.2 |
 | Fuzzy | 4.9751 | 1.1937 | 6.7171 | 1.2238 | 136133.2 |
 
-## Scenario 3 - circle + 100% time-varying parametric uncertainty
+## Scenario 3 - circle + +/-15% time-varying parametric uncertainty
 
 | Controller | pos RMSE | yaw RMSE | energy |
 |---|---|---|---|
-| Hybrid | 2.8898 | 0.0649 | 251685.2 |
-| MPC | 3.4377 | 0.0513 | 269173.9 |
-| PID | 5.6755 | 0.2785 | 231992.0 |
-| Fuzzy | 4.7455 | 0.2607 | 228013.8 |
+| Hybrid | 0.3116 | 0.0091 | 86768.6 |
+| MPC | 0.3645 | 0.0353 | 89229.2 |
+| PID | 8.9844 | 1.3950 | 247085.3 |
+| Fuzzy | 4.6165 | 1.0319 | 155177.8 |

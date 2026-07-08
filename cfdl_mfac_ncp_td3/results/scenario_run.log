@@ -31,21 +31,20 @@ Scenario 2 (overall / during-disturbance)
   Fuzzy               4.9751          1.1937          6.7171          1.2238     136133.2148
 
 ========================================================================
-SCENARIO 3 - circle + 100% time-varying parametric uncertainty
+SCENARIO 3 - circle + +/-15% time-varying parametric uncertainty
 ========================================================================
-  (hybrid uses ESO disturbance compensation for the persistent uncertainty)
 Scenario 3 (parametric uncertainty)
   ctrl              pos_rmse        yaw_rmse          energy
-  Hybrid              2.8898          0.0649     251685.1926
-  MPC                 3.4377          0.0513     269173.8740
-  PID                 5.6755          0.2785     231991.9969
-  Fuzzy               4.7455          0.2607     228013.7666
+  Hybrid              0.3116          0.0091      86768.5778
+  MPC                 0.3645          0.0353      89229.2416
+  PID                 8.9844          1.3950     247085.2814
+  Fuzzy               4.6165          1.0319     155177.7546
 
 ========================================================================
 HYBRID 6-panel diagnostic figures (per scenario)
 ========================================================================
   wrote hybrid_scenario1_panels.png  (pos_rmse=0.4181, yaw_rmse=0.0056)
   wrote hybrid_scenario2_panels.png  (pos_rmse=0.3311, yaw_rmse=0.0112)
-  wrote hybrid_scenario3_panels.png  (pos_rmse=2.8898, yaw_rmse=0.0649)
+  wrote hybrid_scenario3_panels.png  (pos_rmse=0.3116, yaw_rmse=0.0091)
 
 Artifacts -> /home/user/abr_control/cfdl_mfac_ncp_td3/results/scenarios/
