@@ -40,6 +40,7 @@ from ..environment.residual_env import load_strong_baseline
 from ..formation import tune_all, build_tuned
 from ..dynamics import REMUS6DOF, REMUSParams, ThrusterModel
 from ..dynamics.remus6dof import jacobian
+from ..observers import DisturbanceObserver
 from ..trajectories import make_trajectory
 from ..benchmark.base import pose_error
 
@@ -56,7 +57,7 @@ def _log(m):
 # Core simulator (true plant noise-free; only the *measurement* is corrupted)
 # --------------------------------------------------------------------------- #
 def simulate(make_ctrl, trajectory, eta0, nu0, duration=60.0,
-             tau_dist_fn=None, meas_noise=None, param_unc=None, seed=0):
+             tau_dist_fn=None, meas_noise=None, param_unc=None, seed=0, observe=False):
     cfg = default_config()
     dt = cfg.sim.dt
     veh = REMUS6DOF(REMUSParams(), cfg.sim)
@@ -66,14 +67,24 @@ def simulate(make_ctrl, trajectory, eta0, nu0, duration=60.0,
     traj = make_trajectory(trajectory, duration=duration)
     rng = np.random.default_rng(seed)
     nom = REMUSParams()  # nominal coefficients for the uncertainty baseline
+    # Disturbance/total-uncertainty estimator (Chen NDOB, i.e. an ESO for the
+    # lumped body-frame disturbance wrench f_hat(k)); observes the closed loop
+    # with the *nominal* model, so it also captures the parametric-uncertainty
+    # mismatch in Scenario 3.  Runs alongside the controller for panel (e).
+    ndob = DisturbanceObserver(REMUSParams(), cfg.observer) if observe else None
+    if ndob is not None:
+        ndob.reset()
     n = int(duration / dt)
 
-    T, ETA, ETAD, TAU = [], [], [], []
+    T, ETA, ETAD, NU, TAU, FHAT, DEXT = [], [], [], [], [], [], []
     pe, ye, energy = [], [], 0.0
+    tau_prev = np.zeros(6)
     for k in range(n):
         t = k * dt
         if param_unc is not None:
             param_unc(veh, nom, t)                       # time-varying plant params
+        if ndob is not None:                             # update ESO with last wrench
+            FHAT.append(ndob.update(veh.eta, veh.nu, tau_prev, dt).copy())
         eta_d, eta_d_dot = traj.reference(t)
         eta_m, nu_m = veh.eta.copy(), veh.nu.copy()
         if meas_noise is not None:
@@ -84,14 +95,19 @@ def simulate(make_ctrl, trajectory, eta0, nu0, duration=60.0,
         energy += float(ta @ ta) * dt
         td = tau_dist_fn(t) if tau_dist_fn is not None else None
         veh.step(ta, tau_dist=td)
+        tau_prev = ta
         e = pose_error(eta_d, veh.eta)
-        T.append(t); ETA.append(veh.eta.copy()); ETAD.append(eta_d.copy()); TAU.append(ta.copy())
+        T.append(t); ETA.append(veh.eta.copy()); ETAD.append(eta_d.copy())
+        NU.append(veh.nu.copy()); TAU.append(ta.copy())
+        DEXT.append(td.copy() if td is not None else np.zeros(6))
         pe.append(float(np.hypot(e[0], e[1]))); ye.append(abs(float(e[5])))
         if not np.all(np.isfinite(veh.state)):
             break
     pe, ye = np.array(pe), np.array(ye)
     return {"t": np.array(T), "eta": np.array(ETA), "eta_d": np.array(ETAD),
-            "tau": np.array(TAU), "pos_err": pe, "yaw_err": ye,
+            "nu": np.array(NU), "tau": np.array(TAU),
+            "f_hat": np.array(FHAT) if FHAT else np.zeros((len(T), 6)),
+            "d_ext": np.array(DEXT), "pos_err": pe, "yaw_err": ye,
             "pos_rmse": float(np.sqrt(np.mean(pe ** 2))),
             "yaw_rmse": float(np.sqrt(np.mean(ye ** 2))),
             "energy": energy, "diverged": not np.all(np.isfinite(veh.state))}
@@ -340,6 +356,103 @@ def _write_report(s1, s2, s3):
         f.write("\n".join(L) + "\n")
 
 
+# --------------------------------------------------------------------------- #
+# Per-scenario 6-panel diagnostic figure for the HYBRID controller
+#   (a) xy tracking  (b) tracking errors  (c) body velocity  (d) control input
+#   (e) ESO total-disturbance estimate f_hat(k)  (f) external disturbance
+# --------------------------------------------------------------------------- #
+IDX = [0, 1, 5]                      # active planar DOFs: surge, sway, yaw
+LBL = ["surge", "sway", "yaw"]
+CL = ["#2c7fb8", "#e67e22", "#27ae60"]
+
+
+def hybrid_panels(scenario, fname, title):
+    cfg = default_config(); BL = load_strong_baseline()
+    mk = lambda: HybridController(cfg, use_observers=False, use_supervisor=False, **BL)
+    if scenario == "square":
+        r = simulate(mk, "square", np.zeros(6), np.array([0.5, 0, 0, 0, 0, 0]), observe=True)
+    elif scenario == "lemniscate":
+        dist, _ = make_disturbance()
+        r = simulate(mk, "lemniscate", np.zeros(6), np.array([0.3, 0.6, 0, 0, 0, np.pi / 15]),
+                     tau_dist_fn=dist, observe=True)
+    else:  # circle
+        r = simulate(mk, "circle", np.array([3, 0, 0, 0, 0, 0]),
+                     np.array([0, 0.5, 0, 0, 0, np.pi / 10]), param_unc=param_uncertainty, observe=True)
+
+    t = r["t"]
+    fig, ax = plt.subplots(2, 3, figsize=(15, 8))
+    fig.suptitle(title, fontsize=13, y=0.995)
+
+    # (a) reference and response in the xy-plane
+    a = ax[0, 0]
+    a.plot(r["eta_d"][:, 0], r["eta_d"][:, 1], "k--", lw=1.8, label="reference")
+    a.plot(r["eta"][:, 0], r["eta"][:, 1], "#27ae60", lw=1.4, label="Hybrid")
+    a.plot(r["eta"][0, 0], r["eta"][0, 1], "ko", ms=5)
+    a.set_xlabel("x [m]"); a.set_ylabel("y [m]"); a.axis("equal")
+    a.set_title("(a) Reference and response (xy-plane)", fontsize=10)
+    a.legend(fontsize=8, frameon=False)
+
+    # (b) tracking errors (x, y, yaw); yaw wrapped to (-pi, pi]
+    b = ax[0, 1]
+    ex = r["eta"][:, 0] - r["eta_d"][:, 0]
+    ey = r["eta"][:, 1] - r["eta_d"][:, 1]
+    dpsi = r["eta"][:, 5] - r["eta_d"][:, 5]
+    epsi = np.arctan2(np.sin(dpsi), np.cos(dpsi))
+    b.plot(t, ex, CL[0], lw=1.1, label="$x-x_d$")
+    b.plot(t, ey, CL[1], lw=1.1, label="$y-y_d$")
+    b.plot(t, epsi, CL[2], lw=1.1, label=r"$\psi-\psi_d$ [rad]")
+    b.axhline(0, color="grey", lw=0.6)
+    b.set_xlabel("t [s]"); b.set_ylabel("tracking error")
+    b.set_title("(b) Tracking errors", fontsize=10); b.legend(fontsize=8, frameon=False)
+
+    # (c) body-fixed velocities (u, v, r)
+    c = ax[0, 2]
+    for j, i in enumerate(IDX):
+        lab = ["u [m/s]", "v [m/s]", "r [rad/s]"][j]
+        c.plot(t, r["nu"][:, i], CL[j], lw=1.1, label=lab)
+    c.set_xlabel("t [s]"); c.set_ylabel("body velocity")
+    c.set_title("(c) AUV velocity (body frame)", fontsize=10); c.legend(fontsize=8, frameon=False)
+
+    # (d) control input
+    d = ax[1, 0]
+    for j, i in enumerate(IDX):
+        d.plot(t, r["tau"][:, i], CL[j], lw=1.0, label=r"$\tau_{%s}$" % LBL[j])
+    d.set_xlabel("t [s]"); d.set_ylabel("control input [N, N·m]")
+    d.set_title("(d) Control input", fontsize=10); d.legend(fontsize=8, frameon=False)
+
+    # (e) ESO-estimated total (incremental) disturbance f_hat(k).  The observer
+    # start-up transient (first ~1 s) is excluded from the y-scale so the steady
+    # estimate is legible.
+    e = ax[1, 1]
+    for j, i in enumerate(IDX):
+        e.plot(t, r["f_hat"][:, i], CL[j], lw=1.0, label=r"$\hat f_{%s}$" % LBL[j])
+    warm = t > 1.0
+    if np.any(warm):
+        fw = r["f_hat"][warm][:, IDX]
+        lo, hi = float(fw.min()), float(fw.max())
+        pad = 0.15 * (hi - lo + 1e-6)
+        e.set_ylim(lo - pad, hi + pad)
+    e.set_xlabel("t [s]"); e.set_ylabel(r"$\hat f(k)$ [N, N·m]")
+    e.set_title("(e) Estimated total disturbance (ESO)", fontsize=10); e.legend(fontsize=8, frameon=False)
+
+    # (f) external disturbances
+    f = ax[1, 2]
+    if np.any(np.abs(r["d_ext"]) > 1e-9):
+        for j, i in enumerate(IDX):
+            f.plot(t, r["d_ext"][:, i], CL[j], lw=1.0, label=r"$d_{%s}$" % LBL[j])
+        f.legend(fontsize=8, frameon=False)
+    else:
+        f.text(0.5, 0.5, "no external disturbance\n(nominal / parametric-uncertainty case)",
+               ha="center", va="center", transform=f.transAxes, fontsize=9, color="grey")
+    f.axhline(0, color="grey", lw=0.6)
+    f.set_xlabel("t [s]"); f.set_ylabel("external disturbance [N, N·m]")
+    f.set_title("(f) External disturbances", fontsize=10)
+
+    fig.tight_layout(rect=(0, 0, 1, 0.98))
+    fig.savefig(os.path.join(RESULTS_DIR, fname), dpi=170); plt.close(fig)
+    _log(f"  wrote {fname}  (pos_rmse={r['pos_rmse']:.4f}, yaw_rmse={r['yaw_rmse']:.4f})")
+
+
 def main():
     os.makedirs(RESULTS_DIR, exist_ok=True)
     ctrls = build_controllers()
@@ -349,6 +462,14 @@ def main():
     with open(os.path.join(RESULTS_DIR, "results.json"), "w") as f:
         json.dump({"scenario1": s1, "scenario2": s2, "scenario3": s3}, f, indent=2, default=float)
     _write_report(s1, s2, s3)
+
+    _log("\n" + "=" * 72 + "\nHYBRID 6-panel diagnostic figures (per scenario)\n" + "=" * 72)
+    hybrid_panels("square", "hybrid_scenario1_panels.png",
+                  "Scenario 1 (square trajectory) - hybrid controller")
+    hybrid_panels("lemniscate", "hybrid_scenario2_panels.png",
+                  "Scenario 2 (lemniscate + external disturbances) - hybrid controller")
+    hybrid_panels("circle", "hybrid_scenario3_panels.png",
+                  "Scenario 3 (circle + parametric uncertainty) - hybrid controller")
     _log(f"\nArtifacts -> {RESULTS_DIR}/")
 
 

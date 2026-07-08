@@ -40,4 +40,11 @@ Scenario 3 (parametric uncertainty)
   PID                 5.6755          0.2785     231991.9969
   Fuzzy               4.7455          0.2607     228013.7666
 
+========================================================================
+HYBRID 6-panel diagnostic figures (per scenario)
+========================================================================
+  wrote hybrid_scenario1_panels.png  (pos_rmse=0.4181, yaw_rmse=0.0056)
+  wrote hybrid_scenario2_panels.png  (pos_rmse=0.3311, yaw_rmse=0.0112)
+  wrote hybrid_scenario3_panels.png  (pos_rmse=3.3875, yaw_rmse=0.0602)
+
 Artifacts -> /home/user/abr_control/cfdl_mfac_ncp_td3/results/scenarios/
