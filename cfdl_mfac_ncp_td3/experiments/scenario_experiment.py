@@ -84,7 +84,7 @@ def simulate(make_ctrl, trajectory, eta0, nu0, duration=60.0,
         ndob.reset()
     n = int(duration / dt)
 
-    T, ETA, ETAD, NU, TAU, FHAT, DEXT = [], [], [], [], [], [], []
+    T, ETA, ETAD, NU, TAU, FHAT, DEXT, PHI = [], [], [], [], [], [], [], []
     pe, ye, energy = [], [], 0.0
     tau_prev = np.zeros(6)
     for k in range(n):
@@ -101,6 +101,8 @@ def simulate(make_ctrl, trajectory, eta0, nu0, duration=60.0,
             eta_m = eta_m + meas_noise["eta"] * rng.standard_normal(6)
             nu_m = nu_m + meas_noise["nu"] * rng.standard_normal(6)
         tau = ctrl.control(eta_m, nu_m, eta_d, eta_d_dot, dt)
+        if hasattr(ctrl, "mfac"):                        # CFDL-MFAC pseudo-Jacobian (PJM)
+            PHI.append([m.gain for m in ctrl.mfac])
         ta = thr.step(tau, dt)
         energy += float(ta @ ta) * dt
         td = tau_dist_fn(t) if tau_dist_fn is not None else None
@@ -117,6 +119,7 @@ def simulate(make_ctrl, trajectory, eta0, nu0, duration=60.0,
     return {"t": np.array(T), "eta": np.array(ETA), "eta_d": np.array(ETAD),
             "nu": np.array(NU), "tau": np.array(TAU),
             "f_hat": np.array(FHAT) if FHAT else np.zeros((len(T), 6)),
+            "phi": np.array(PHI) if PHI else np.zeros((len(T), 0)),
             "d_ext": np.array(DEXT), "pos_err": pe, "yaw_err": ye,
             "pos_rmse": float(np.sqrt(np.mean(pe ** 2))),
             "yaw_rmse": float(np.sqrt(np.mean(ye ** 2))),
@@ -479,18 +482,27 @@ def hybrid_panels(scenario, fname, title):
     e.set_xlabel("t [s]"); e.set_ylabel(r"$\hat f(k)$ [N, N·m]")
     e.set_title("(e) Estimated total disturbance (ESO)", fontsize=10); e.legend(fontsize=8, frameon=False)
 
-    # (f) external disturbances
+    # (f) external disturbances when present; otherwise the CFDL-MFAC
+    # pseudo-Jacobian (PJM) estimate Phi_hat_c, which shows the online adaptation
+    # of the model-free core (and whose boundedness/sign-definiteness underpins
+    # the BIBO stability of the adaptive trim).
     f = ax[1, 2]
     if np.any(np.abs(r["d_ext"]) > 1e-9):
         for j, i in enumerate(IDX):
             f.plot(t, r["d_ext"][:, i], CL[j], lw=1.0, label=r"$d_{%s}$" % LBL[j])
         f.legend(fontsize=8, frameon=False)
+        f.axhline(0, color="grey", lw=0.6)
+        f.set_xlabel("t [s]"); f.set_ylabel("external disturbance [N, N·m]")
+        f.set_title("(f) External disturbances", fontsize=10)
     else:
-        f.text(0.5, 0.5, "no external disturbance\n(nominal / parametric-uncertainty case)",
-               ha="center", va="center", transform=f.transAxes, fontsize=9, color="grey")
-    f.axhline(0, color="grey", lw=0.6)
-    f.set_xlabel("t [s]"); f.set_ylabel("external disturbance [N, N·m]")
-    f.set_title("(f) External disturbances", fontsize=10)
+        phi = r["phi"]
+        names = ["surge", "sway", "heave"]
+        for j in range(min(phi.shape[1], 3)):
+            f.plot(t, phi[:, j], CL[j % len(CL)], lw=1.0,
+                   label=r"$\hat\Phi_{c,\mathrm{%s}}$" % names[j])
+        f.legend(fontsize=8, frameon=False)
+        f.set_xlabel("t [s]"); f.set_ylabel(r"$\hat\Phi_c(k)$")
+        f.set_title(r"(f) CFDL-MFAC PJM estimate $\hat\Phi_c$", fontsize=10)
 
     fig.tight_layout(rect=(0, 0, 1, 0.98))
     fig.savefig(os.path.join(RESULTS_DIR, fname), dpi=170); plt.close(fig)
