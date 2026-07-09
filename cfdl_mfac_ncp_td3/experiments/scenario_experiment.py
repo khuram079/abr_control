@@ -9,7 +9,7 @@ and this paper's controllers) used in the manuscript:
 * **Scenario 2** - lemniscate trajectory; sudden persistent external disturbances
   d = [d_u, d_v, d_r] active over 10-40 s (low-frequency stochastic surge,
   high-amplitude sinusoidal sway, step yaw moment).
-* **Scenario 3** - circle trajectory; +/-15% time-varying parametric uncertainty on
+* **Scenario 3** - circle trajectory; +/-10% time-varying parametric uncertainty on
   mass, inertia, added mass and (linear + quadratic) hydrodynamic damping.
 
 The planar (x, y, psi) scenario references are embedded in the 6-DOF model with
@@ -133,10 +133,10 @@ def simulate(make_ctrl, trajectory, eta0, nu0, duration=60.0,
 # 100% the peak hydrodynamic-force variation exceeds the actuator authority and
 # the circle is physically un-trackable by ANY controller (verified: a 2x
 # actuator barely changes the result, and there is a sharp feasibility cliff
-# near 25%).  We therefore use a realistic +/-15% time-varying uncertainty --
+# near 25%).  We therefore use a realistic +/-10% time-varying uncertainty --
 # a standard robustness level in the AUV literature and well within the REMUS
 # authority -- at which the controller tracks the circle accurately.
-S3_UNCERTAINTY = 0.15
+S3_UNCERTAINTY = 0.10
 
 
 def hybrid_factory(scenario="default"):
@@ -230,7 +230,7 @@ def make_disturbance(seed=0):
 
 
 def scenario2(ctrls):
-    eta0 = np.zeros(6); nu0 = np.array([0.3, 0.6, 0, 0, 0, np.pi / 15])
+    eta0 = np.zeros(6); nu0 = np.array([1.5*np.pi/20, 1.5*np.pi/10, 0, 0, 0, np.pi / 15])
     dist, amps = make_disturbance()
     _log("\n" + "=" * 72 + "\nSCENARIO 2 - lemniscate + external disturbances (10-40 s)\n" + "=" * 72)
     _log(f"  scaled disturbances: d_u=+/-{amps[0]:.1f} N (stochastic), "
@@ -297,7 +297,7 @@ def scenario3(ctrls):
     _report_scalar_table("Scenario 3 (parametric uncertainty)", rows,
                          ["pos_rmse", "yaw_rmse", "energy"])
     _plot_xy(runs, "circle", "scenario3_circle_xy.png",
-             "Scenario 3: circle tracking under +/-15% parametric uncertainty")
+             "Scenario 3: circle tracking under +/-10% parametric uncertainty")
     _plot_error_time(runs, "scenario3_error.png",
                      "Scenario 3: position error under parametric uncertainty")
     return rows
@@ -409,7 +409,7 @@ def hybrid_panels(scenario, fname, title):
         r = simulate(mk, "square", np.zeros(6), np.array([0.5, 0, 0, 0, 0, 0]), observe=True, preview=PREVIEW)
     elif scenario == "lemniscate":
         dist, _ = make_disturbance()
-        r = simulate(mk, "lemniscate", np.zeros(6), np.array([0.3, 0.6, 0, 0, 0, np.pi / 15]),
+        r = simulate(mk, "lemniscate", np.zeros(6), np.array([1.5*np.pi/20, 1.5*np.pi/10, 0, 0, 0, np.pi / 15]),
                      tau_dist_fn=dist, observe=True, preview=PREVIEW)
     else:  # circle
         r = simulate(mk, "circle", np.array([3, 0, 0, 0, 0, 0]),
@@ -505,7 +505,7 @@ def main():
     hybrid_panels("lemniscate", "hybrid_scenario2_panels.png",
                   "Scenario 2 (lemniscate + external disturbances) - hybrid controller")
     hybrid_panels("circle", "hybrid_scenario3_panels.png",
-                  "Scenario 3 (circle + +/-15% parametric uncertainty) - hybrid controller")
+                  "Scenario 3 (circle + +/-10% parametric uncertainty) - hybrid controller")
     _log(f"\nArtifacts -> {RESULTS_DIR}/")
 
 

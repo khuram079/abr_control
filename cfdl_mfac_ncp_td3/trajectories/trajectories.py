@@ -169,19 +169,26 @@ class SquareTrajectory(Trajectory):
 
 
 class LemniscateTrajectory(Trajectory):
-    """Figure-of-eight (lemniscate) path (Scenario 2). Planar."""
+    """Figure-of-eight (lemniscate) path (Scenario 2). Planar.
+
+    ``amp`` sets the figure-8 half-extent [m].  The peak path speed scales with
+    ``amp``; on a small vehicle it is chosen so the required lateral (sway)
+    velocity stays within the thruster envelope (see the scenario experiment).
+    """
 
     name = "lemniscate"
 
-    def __init__(self, duration: float = 60.0):
+    def __init__(self, amp: float = 1.5, duration: float = 60.0):
+        self.amp = float(amp)
         self.duration = duration
 
     def reference(self, t: float):
-        x = 2.0 * np.sin(np.pi * t / 20.0)
-        y = 2.0 * np.sin(np.pi * t / 10.0)
+        a = self.amp
+        x = a * np.sin(np.pi * t / 20.0)
+        y = a * np.sin(np.pi * t / 10.0)
         psi = np.pi * t / 15.0
-        dx = 2.0 * (np.pi / 20.0) * np.cos(np.pi * t / 20.0)
-        dy = 2.0 * (np.pi / 10.0) * np.cos(np.pi * t / 10.0)
+        dx = a * (np.pi / 20.0) * np.cos(np.pi * t / 20.0)
+        dy = a * (np.pi / 10.0) * np.cos(np.pi * t / 10.0)
         dpsi = np.pi / 15.0
         eta_d = np.array([x, y, 0.0, 0.0, 0.0, psi])
         eta_d_dot = np.array([dx, dy, 0.0, 0.0, 0.0, dpsi])

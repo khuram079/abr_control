@@ -17,16 +17,16 @@ Position RMSE [m] per velocity-measurement SNR (position SNR = 80 dB):
 
 | Controller | pos RMSE | yaw RMSE | pos RMSE (dist.) | yaw RMSE (dist.) | energy |
 |---|---|---|---|---|---|
-| Hybrid | 0.2948 | 0.0109 | 0.3178 | 0.0135 | 36871.8 |
-| MPC | 0.3690 | 0.0265 | 0.4135 | 0.0267 | 37428.3 |
-| PID | 8.9296 | 1.5068 | 7.8467 | 1.6430 | 229144.0 |
-| Fuzzy | 4.8473 | 1.2782 | 5.7177 | 1.2080 | 157573.9 |
+| Hybrid | 0.1262 | 0.0106 | 0.1254 | 0.0134 | 22491.9 |
+| MPC | 0.1361 | 0.0193 | 0.1424 | 0.0220 | 21521.0 |
+| PID | 9.5224 | 1.5576 | 7.6150 | 1.6360 | 225498.8 |
+| Fuzzy | 5.2108 | 1.2190 | 5.6999 | 1.1933 | 154716.3 |
 
-## Scenario 3 - circle + +/-15% time-varying parametric uncertainty
+## Scenario 3 - circle + +/-10% time-varying parametric uncertainty
 
 | Controller | pos RMSE | yaw RMSE | energy |
 |---|---|---|---|
-| Hybrid | 0.2869 | 0.0091 | 87003.8 |
-| MPC | 0.3278 | 0.0339 | 87759.0 |
-| PID | 8.9292 | 1.4049 | 245810.9 |
-| Fuzzy | 10.2280 | 0.8342 | 213069.2 |
+| Hybrid | 0.1158 | 0.0096 | 84872.6 |
+| MPC | 0.1862 | 0.0275 | 86522.6 |
+| PID | 3.7576 | 1.0216 | 159930.7 |
+| Fuzzy | 2.7395 | 0.6064 | 122501.4 |
