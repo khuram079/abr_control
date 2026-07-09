@@ -48,6 +48,12 @@ from ..benchmark.base import pose_error
 RESULTS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "results", "scenarios")
 F_MAX_REF = 2000.0            # source-scenario control range used for scaling
 DIST_WINDOW = (10.0, 40.0)    # Scenario 2 disturbance active window [s]
+# Reference velocity-preview horizon [s].  The reference trajectory is known in
+# advance, so the guidance loop feeds the near-future reference velocity forward
+# (analogous to MPC's preview horizon).  Applied identically to EVERY controller
+# for a fair comparison; it is inert on constant-velocity segments and only
+# anticipates turns/corners.
+PREVIEW = 1.0
 
 
 def _log(m):
@@ -58,7 +64,8 @@ def _log(m):
 # Core simulator (true plant noise-free; only the *measurement* is corrupted)
 # --------------------------------------------------------------------------- #
 def simulate(make_ctrl, trajectory, eta0, nu0, duration=60.0,
-             tau_dist_fn=None, meas_noise=None, param_unc=None, seed=0, observe=False):
+             tau_dist_fn=None, meas_noise=None, param_unc=None, seed=0, observe=False,
+             preview=0.0):
     cfg = default_config()
     dt = cfg.sim.dt
     veh = REMUS6DOF(REMUSParams(), cfg.sim)
@@ -87,6 +94,8 @@ def simulate(make_ctrl, trajectory, eta0, nu0, duration=60.0,
         if ndob is not None:                             # update ESO with last wrench
             FHAT.append(ndob.update(veh.eta, veh.nu, tau_prev, dt).copy())
         eta_d, eta_d_dot = traj.reference(t)
+        if preview > 0.0:                                # reference velocity preview
+            _, eta_d_dot = traj.reference(min(t + preview, duration))
         eta_m, nu_m = veh.eta.copy(), veh.nu.copy()
         if meas_noise is not None:
             eta_m = eta_m + meas_noise["eta"] * rng.standard_normal(6)
@@ -170,7 +179,7 @@ def scenario1(ctrls, n_seeds=8):
     ref = {}
     nominal = {}
     for name, mk in ctrls.items():
-        r = simulate(mk, "square", eta0, nu0)
+        r = simulate(mk, "square", eta0, nu0, preview=PREVIEW)
         nominal[name] = r
         ref[name] = {"eta": np.sqrt(np.mean(r["eta"] ** 2, axis=0)) + 1e-6,
                      "nu": np.sqrt(np.mean(np.gradient(r["eta"], axis=0) ** 2, axis=0)) + 1e-3}
@@ -185,7 +194,7 @@ def scenario1(ctrls, n_seeds=8):
                 for s in range(n_seeds):
                     mn = {"eta": _noise_std(ref[name]["eta"], SNR_ETA),
                           "nu": _noise_std(ref[name]["nu"], snr_v)}
-                    r = simulate(mk, "square", eta0, nu0, meas_noise=mn, seed=100 + s)
+                    r = simulate(mk, "square", eta0, nu0, meas_noise=mn, seed=100 + s, preview=PREVIEW)
                     pr.append(r["pos_rmse"]); yr.append(r["yaw_rmse"])
                 table[name].append((float(np.mean(pr)), float(np.mean(yr))))
     _report_noise_table(table)
@@ -228,7 +237,7 @@ def scenario2(ctrls):
          f"d_v={amps[1]:.1f} sin(t) N, d_r={amps[2]:.1f} N m (step)")
     runs, rows = {}, {}
     for name, mk in ctrls.items():
-        r = simulate(mk, "lemniscate", eta0, nu0, tau_dist_fn=dist)
+        r = simulate(mk, "lemniscate", eta0, nu0, tau_dist_fn=dist, preview=PREVIEW)
         runs[name] = r
         m = (DIST_WINDOW[0] <= r["t"]) & (r["t"] <= DIST_WINDOW[1])
         rows[name] = {"pos_rmse": r["pos_rmse"], "yaw_rmse": r["yaw_rmse"],
@@ -282,7 +291,7 @@ def scenario3(ctrls):
          f"parametric uncertainty\n{'='*72}")
     runs, rows = {}, {}
     for name, mk in ctrls.items():
-        r = simulate(mk, "circle", eta0, nu0, param_unc=param_uncertainty)
+        r = simulate(mk, "circle", eta0, nu0, param_unc=param_uncertainty, preview=PREVIEW)
         runs[name] = r
         rows[name] = {"pos_rmse": r["pos_rmse"], "yaw_rmse": r["yaw_rmse"], "energy": r["energy"]}
     _report_scalar_table("Scenario 3 (parametric uncertainty)", rows,
@@ -397,14 +406,14 @@ CL = ["#2c7fb8", "#e67e22", "#27ae60"]
 def hybrid_panels(scenario, fname, title):
     mk = hybrid_factory(scenario)
     if scenario == "square":
-        r = simulate(mk, "square", np.zeros(6), np.array([0.5, 0, 0, 0, 0, 0]), observe=True)
+        r = simulate(mk, "square", np.zeros(6), np.array([0.5, 0, 0, 0, 0, 0]), observe=True, preview=PREVIEW)
     elif scenario == "lemniscate":
         dist, _ = make_disturbance()
         r = simulate(mk, "lemniscate", np.zeros(6), np.array([0.3, 0.6, 0, 0, 0, np.pi / 15]),
-                     tau_dist_fn=dist, observe=True)
+                     tau_dist_fn=dist, observe=True, preview=PREVIEW)
     else:  # circle
         r = simulate(mk, "circle", np.array([3, 0, 0, 0, 0, 0]),
-                     np.array([0, 0.5, 0, 0, 0, np.pi / 10]), param_unc=param_uncertainty, observe=True)
+                     np.array([0, 0.5, 0, 0, 0, np.pi / 10]), param_unc=param_uncertainty, observe=True, preview=PREVIEW)
 
     t = r["t"]
     fig, ax = plt.subplots(2, 3, figsize=(15, 8))
