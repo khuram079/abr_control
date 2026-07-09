@@ -11,12 +11,12 @@ SCENARIO 1 - square trajectory + measurement noise
 ========================================================================
   Test                    Hybrid                   MPC                   PID                 Fuzzy
   ------------------------------------------------------------------------------------------------
-  0 (none)    0.1110/0.0171         0.1356/0.0293        14.1113/1.3104         6.9325/1.3529     
-  1 (60dB)    0.1046/0.0168         0.1356/0.0293        14.0164/1.3476         6.8838/1.3577     
-  2 (40dB)    0.1023/0.0166         0.1356/0.0293        13.7302/1.3431         6.7804/1.3513     
-  3 (30dB)    0.1059/0.0169         0.1356/0.0293        13.9760/1.3343         6.7396/1.3767     
-  4 (25dB)    0.1053/0.0168         0.1356/0.0293        14.6395/1.3300         6.4059/1.3658     
-  5 (20dB)    0.1055/0.0167         0.1357/0.0293        16.0065/1.3113         6.7064/1.3529     
+  0 (none)    0.1043/0.0169         0.1356/0.0293        14.1113/1.3104         6.9325/1.3529     
+  1 (60dB)    0.1051/0.0169         0.1356/0.0293        14.0164/1.3476         6.8838/1.3577     
+  2 (40dB)    0.1046/0.0169         0.1356/0.0293        13.7302/1.3431         6.7804/1.3513     
+  3 (30dB)    0.1050/0.0169         0.1356/0.0293        13.9760/1.3343         6.7396/1.3767     
+  4 (25dB)    0.1050/0.0169         0.1356/0.0293        14.6395/1.3300         6.4059/1.3658     
+  5 (20dB)    0.1052/0.0169         0.1357/0.0293        16.0065/1.3113         6.7064/1.3529     
   (values: position RMSE [m] / yaw RMSE [rad])
 
 ========================================================================
@@ -25,7 +25,7 @@ SCENARIO 2 - lemniscate + external disturbances (10-40 s)
   scaled disturbances: d_u=+/-10.0 N (stochastic), d_v=7.5 sin(t) N, d_r=4.0 N m (step)
 Scenario 2 (overall / during-disturbance)
   ctrl              pos_rmse        yaw_rmse   pos_rmse_dist   yaw_rmse_dist          energy
-  Hybrid              0.1262          0.0106          0.1254          0.0134      22491.8553
+  Hybrid              0.1267          0.0106          0.1261          0.0134      22361.0118
   MPC                 0.1361          0.0193          0.1424          0.0220      21520.9626
   PID                 9.5224          1.5576          7.6150          1.6360     225498.7563
   Fuzzy               5.2108          1.2190          5.6999          1.1933     154716.3002
@@ -35,7 +35,7 @@ SCENARIO 3 - circle + +/-10% time-varying parametric uncertainty
 ========================================================================
 Scenario 3 (parametric uncertainty)
   ctrl              pos_rmse        yaw_rmse          energy
-  Hybrid              0.1158          0.0096      84872.5753
+  Hybrid              0.1166          0.0096      84219.3627
   MPC                 0.1862          0.0275      86522.5967
   PID                 3.7576          1.0216     159930.7356
   Fuzzy               2.7395          0.6064     122501.4190
@@ -43,8 +43,8 @@ Scenario 3 (parametric uncertainty)
 ========================================================================
 HYBRID 6-panel diagnostic figures (per scenario)
 ========================================================================
-  wrote hybrid_scenario1_panels.png  (pos_rmse=0.1110, yaw_rmse=0.0171)
-  wrote hybrid_scenario2_panels.png  (pos_rmse=0.1262, yaw_rmse=0.0106)
-  wrote hybrid_scenario3_panels.png  (pos_rmse=0.1158, yaw_rmse=0.0096)
+  wrote hybrid_scenario1_panels.png  (pos_rmse=0.1043, yaw_rmse=0.0169)
+  wrote hybrid_scenario2_panels.png  (pos_rmse=0.1267, yaw_rmse=0.0106)
+  wrote hybrid_scenario3_panels.png  (pos_rmse=0.1166, yaw_rmse=0.0096)
 
 Artifacts -> /home/user/abr_control/cfdl_mfac_ncp_td3/results/scenarios/
